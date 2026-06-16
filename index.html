@@ -17,6 +17,7 @@
     --red:#ef5d5d; --red-soft:rgba(239,93,93,.14); --red-line:rgba(239,93,93,.42);
     --blue:#9db4e8; --blue-soft:rgba(26,37,64,.55);
     --violet:#b69be8; --violet-soft:rgba(120,90,200,.18);
+    --rf:#37cdd6; --rf-soft:rgba(55,205,214,.15); --rf-line:rgba(55,205,214,.42);
     --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 26px rgba(0,0,0,.5);
     --radius:14px;
   }
@@ -129,9 +130,18 @@
   .rf .rfrow .lab{display:flex;align-items:center;gap:9px}
   .rf .rfrow .sgn{width:18px;text-align:center;font-weight:800;color:var(--muted)}
   .rf .rfrow.add .sgn{color:var(--green)} .rf .rfrow.sub .sgn{color:var(--red)}
-  .rf .rfrow .val{font-variant-numeric:tabular-nums;font-weight:640}
+  .rf .rfrow .val{font-variant-numeric:tabular-nums;font-weight:680;color:var(--rf)}
   .rf .rfrow.begin,.rf .rfrow.end{font-weight:740;font-size:15px;border-bottom:0}
   .rf .rfrow.end{border-top:2px solid var(--line);margin-top:4px;padding-top:12px}
+  .rf .rfrow.memo{opacity:.8}
+  .rf .rfrow.memo .val{color:var(--muted)}
+  .rf-jump{font-size:10px;color:var(--rf);cursor:pointer;border:1px solid var(--rf-line);border-radius:6px;padding:1px 6px;background:var(--rf-soft);font-weight:700;white-space:nowrap}
+  .rf-jump:hover{background:var(--rf);color:#001}
+  /* Roll-forward tie color — any total that flows into the inventory roll-forward */
+  .rf-tied{color:var(--rf)!important;font-weight:740}
+  .rf-legend{font-size:11.5px;color:var(--rf);background:var(--rf-soft);border:1px solid var(--rf-line);border-radius:8px;padding:6px 11px;display:inline-flex;gap:7px;align-items:center;margin-bottom:12px}
+  .rf-legend .sw{width:11px;height:11px;border-radius:3px;background:var(--rf);display:inline-block;flex:none}
+  .rf-chip{font-size:10px;font-weight:700;color:var(--rf);background:var(--rf-soft);border:1px solid var(--rf-line);border-radius:6px;padding:1px 7px;white-space:nowrap}
   .rf .rfrow .gl-tag{font-size:10px;padding:1px 6px}
   .rf .rfrow.begin .gl-tag,.rf .rfrow.end .gl-tag{font-size:10.5px}
   .rf .rfrow.expandable{cursor:pointer;user-select:none}
@@ -236,7 +246,7 @@
       <div class="logo">FI</div>
       <div>
         <div class="name">Inventory Reconciliation</div>
-        <div class="sub">Receiving · counts · bins · lots · backorders · fulfillment · GL · reserves · LIFO · turnover</div>
+        <div class="sub">Receiving · storage · in-transit · transfers · repair · warranty · GL · reserves · LIFO · turnover</div>
       </div>
     </div>
     <div class="header-actions">
@@ -263,7 +273,7 @@
 /* ---------------------------------------------------------------------------
    Inventory Reconciliation — single-file workspace (vanilla JS, localStorage)
    --------------------------------------------------------------------------- */
-const LS_KEY='inv_recon_v5';
+const LS_KEY='inv_recon_v6';
 const $=id=>document.getElementById(id);
 const money=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
 const money2=n=>(n<0?'-$':'$')+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -535,14 +545,56 @@ function seedBins(){
     {bin:'Q-02',zone:'QC / Quarantine',sku:'',qty:0,cap:20}
   ];
 }
+function seedIntransit(){
+  // Goods in transit. owned=true means still our inventory (vendor FOB-origin, customer FOB-destination)
+  // and therefore part of the roll-forward / ending inventory.
+  return [
+    {id:id(),ref:'IT-IN-21',dir:'Inbound',party:'BioPolymer Sciences',sku:'GB-300',qty:240,value:18000,terms:'FOB origin',owned:true,eta:'2026-06-19'},
+    {id:id(),ref:'IT-OUT-58',dir:'Outbound',party:'Stanford Genomics Core',sku:'INST-NGS-1',qty:1,value:7500,terms:'FOB destination',owned:true,eta:'2026-06-21'},
+    {id:id(),ref:'IT-OUT-60',dir:'Outbound',party:'Broad Institute',sku:'GB-400',qty:6,value:3000,terms:'FOB destination',owned:true,eta:'2026-06-20'},
+    {id:id(),ref:'IT-OUT-55',dir:'Outbound',party:'Thermo Fisher OEM',sku:'INST-QPCR-2',qty:1,value:9000,terms:'FOB origin',owned:false,eta:'2026-06-18'},
+    {id:id(),ref:'IT-IN-23',dir:'Inbound',party:'MagnaCore Particles',sku:'GB-200',qty:60,value:5000,terms:'FOB destination',owned:false,eta:'2026-06-22'}
+  ];
+}
+function seedTransfers(){
+  // Branch = within-company relocation (net $0). Internal use = consumed by a dept (marketing/demo/
+  // sample/R&D) → leaves sellable inventory → roll-forward subtraction.
+  return [
+    {id:id(),ref:'TR-1042',kind:'Internal use',from:'Cold-room A',to:'Marketing',sku:'GB-200',qty:5,value:3200,reason:'Trade-show demo kits',date:'2026-05-18'},
+    {id:id(),ref:'TR-1048',kind:'Internal use',from:'Instr. WIP',to:'Sales',sku:'INST-QPCR-2',qty:1,value:4500,reason:'Customer demo unit — consumed',date:'2026-05-22'},
+    {id:id(),ref:'TR-1051',kind:'Internal use',from:'Cold-room A',to:'R&D',sku:'GB-300',qty:11,value:2100,reason:'Internal assay development',date:'2026-05-27'},
+    {id:id(),ref:'TR-1039',kind:'Branch',from:'Cold-room A',to:'West branch (Austin)',sku:'GB-500',qty:60,value:6000,reason:'Branch rebalancing',date:'2026-05-14'},
+    {id:id(),ref:'TR-1055',kind:'Branch',from:'Instr. WIP',to:'East branch (Boston)',sku:'INST-LH-3',qty:1,value:12000,reason:'Branch demo pool',date:'2026-05-29'}
+  ];
+}
+function seedRepairs(){
+  // Internal repair / refurbishment workflow. 'Reused to stock' returns units to sellable inventory.
+  return [
+    {id:id(),ticket:'RPR-301',sku:'INST-QPCR-2',name:'RapidCycler qPCR system',qty:1,value:2400,stage:'Reused to stock',date:'2026-05-12'},
+    {id:id(),ticket:'RPR-305',sku:'INST-LH-3',name:'PipetteMax liquid handler',qty:1,value:4000,stage:'Reused to stock',date:'2026-05-19'},
+    {id:id(),ticket:'RPR-309',sku:'INST-EXT-4',name:'GenoPrep extraction robot',qty:1,value:26100,stage:'In repair',date:'2026-05-24'},
+    {id:id(),ticket:'RPR-312',sku:'GB-400',name:'Protein A column module',qty:2,value:1600,stage:'Received',date:'2026-05-28'},
+    {id:id(),ticket:'RPR-298',sku:'INST-NGS-1',name:'BenchSeq optical module',qty:1,value:8000,stage:'Scrapped',date:'2026-05-09'}
+  ];
+}
+function seedWarranty(){
+  // Warranty / assurance-type transactions. Replacement out reduces inventory; return to stock adds.
+  return [
+    {id:id(),claim:'WTY-7701',kind:'Replacement out',sku:'INST-NGS-1',name:'BenchSeq NGS sequencer',qty:1,value:4800,party:'Stanford Genomics Core',date:'2026-05-15'},
+    {id:id(),claim:'WTY-7705',kind:'Replacement out',sku:'INST-LH-3',name:'PipetteMax liquid handler',qty:1,value:2700,party:'UCSF Lab Medicine',date:'2026-05-21'},
+    {id:id(),claim:'WTY-7709',kind:'Return to stock',sku:'INST-QPCR-2',name:'RapidCycler qPCR (good)',qty:1,value:2100,party:'Mayo Clinic Labs',date:'2026-05-26'},
+    {id:id(),claim:'WTY-7712',kind:'Scrap',sku:'GB-400',name:'Protein A resin (failed)',qty:1,value:900,party:'Regeneron Pharma',date:'2026-05-29'}
+  ];
+}
 function defaultState(){
   return {
-    v:5, tab:'recon', lifoSku:'GB-300',
+    v:6, tab:'recon', lifoSku:'GB-300',
     lifo:seedLifo(), counts:seedCounts(), orders:seedOrders(),
     pos:seedPOs(), alloc:seedAlloc(), lots:seedLots(), bins:seedBins(),
+    intransit:seedIntransit(), transfers:seedTransfers(), repairs:seedRepairs(), warranty:seedWarranty(),
     company:'Helixa Biosystems, Inc.', period:'May 2026',
     openInventory:452000, openGRIR:21500, openAP:96000,
-    perpetualEnding:433500, physicalCount:430900, daysBasis:365,
+    perpetualEnding:449800, physicalCount:447200, daysBasis:365,
     txns:seedTxns(), invoices:seedInvoices(), products:seedProducts(), periods:seedPeriods(),
     reserveOpening:138000, reserveProvision:34000, reserveReversal:4000,
     eoItems:seedEO(), scrap:seedScrap(), returns:seedReturns(),
@@ -559,7 +611,7 @@ let _seq=0; function id(){return 'x'+(Date.now().toString(36))+(_seq++).toString
 
 /* ---- persistence ---------------------------------------------------------- */
 let state=load();
-function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===5) return s;}}catch(e){} return defaultState(); }
+function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===6) return s;}}catch(e){} return defaultState(); }
 const TODAY='2026-06-15';
 function daysUntil(d){ return Math.round((new Date(d+'T00:00:00')-new Date(TODAY+'T00:00:00'))/86400000); }
 function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(state));}catch(e){} }
@@ -577,9 +629,21 @@ function compute(){
   const OPEN={inventory:+state.openInventory||0,grir:+state.openGRIR||0,ap:+state.openAP||0};
   const bal=k=>{const a=ACC[k];const o=OPEN[k]||0;const d=debit[k]||0,c=credit[k]||0;return a.normal==='D'?o+d-c:o+c-d;};
   const B=k=>bucket[k]||0;
-  const glInv=bal('inventory'), grir=bal('grir'), ap=bal('ap');
+  const glBase=bal('inventory'), grir=bal('grir'), ap=bal('ap');
+  // Movement & service activity that also belongs in the inventory roll-forward
+  const sumv=(arr,f)=>arr.reduce((s,x)=>s+(f(x)?(+x.value||0):0),0);
+  const itOwned=sumv(state.intransit||[],x=>x.owned);
+  const itInbound=sumv(state.intransit||[],x=>x.owned&&x.dir==='Inbound');
+  const itOutbound=sumv(state.intransit||[],x=>x.owned&&x.dir==='Outbound');
+  const internalUse=sumv(state.transfers||[],x=>x.kind==='Internal use');
+  const branchGross=sumv(state.transfers||[],x=>x.kind==='Branch');
+  const repairReuse=sumv(state.repairs||[],x=>x.stage==='Reused to stock');
+  const warrantyOut=sumv(state.warranty||[],x=>x.kind==='Replacement out');
+  const warrantyIn=sumv(state.warranty||[],x=>x.kind==='Return to stock');
+  const glInv=glBase + itOwned + repairReuse + warrantyIn - internalUse - warrantyOut;
   const perp=+state.perpetualEnding||0, phys=+state.physicalCount||0;
-  return {debit,credit,bucket,B,bal,OPEN,glInv,grir,ap,perp,phys,
+  return {debit,credit,bucket,B,bal,OPEN,glBase,glInv,grir,ap,perp,phys,
+    itOwned,itInbound,itOutbound,internalUse,branchGross,repairReuse,warrantyOut,warrantyIn,
     varBookPerp:glInv-perp, varPerpPhys:perp-phys, varBookPhys:glInv-phys};
 }
 
@@ -622,7 +686,9 @@ function turnAnalytics(){
 /* ---- tab bar -------------------------------------------------------------- */
 const TABS=[['recon','Reconciliation'],['gl','GL Transactions'],['liab','Liability'],
   ['receiving','Receiving'],['cycle','Cycle Counts'],['bins','Bin Map'],['lots','Lot & Expiry'],
-  ['backorder','Backorders'],['ship','Order Fulfillment'],['reserve','Reserves & Disposition'],
+  ['backorder','Backorders'],['ship','Order Fulfillment'],
+  ['intransit','In-Transit'],['transfers','Internal Transfers'],['repair','Repair & Reuse'],['warranty','Warranty / Assurance'],
+  ['reserve','Reserves & Disposition'],
   ['cost','Cost by Invoice & GL'],['prod','Product Costs'],['lifo','LIFO Costing'],
   ['turn','Turnover'],['review','Review & Export']];
 /* Section groups — a horizontal two-tier nav over the 15 tabs */
@@ -630,6 +696,7 @@ const GROUPS=[
   {key:'overview',label:'Overview',tabs:['recon']},
   {key:'inbound',label:'Inbound & Storage',tabs:['receiving','cycle','bins','lots']},
   {key:'demand',label:'Demand & Outbound',tabs:['backorder','ship']},
+  {key:'movements',label:'Movements & Service',tabs:['intransit','transfers','repair','warranty']},
   {key:'accounting',label:'Accounting',tabs:['gl','liab','reserve']},
   {key:'costing',label:'Costing & Valuation',tabs:['cost','prod','lifo']},
   {key:'analytics',label:'Analytics',tabs:['turn','review']}
@@ -639,6 +706,7 @@ function renderTabbar(){
   const c=compute();
   const pip={gl:state.txns.length,receiving:state.pos.length,cycle:state.counts.length,bins:state.bins.length,
     lots:state.lots.length,backorder:allocMetrics().short,ship:state.orders.filter(o=>o.stage!=='Delivered').length,
+    intransit:state.intransit.length,transfers:state.transfers.length,repair:state.repairs.length,warranty:state.warranty.length,
     reserve:state.eoItems.length,cost:state.invoices.length,prod:state.products.length,
     lifo:state.lifo.length,review:state.exceptions.filter(e=>e.sev==='Open').length};
   $('sidenav').innerHTML=GROUPS.map(g=>{
@@ -678,6 +746,12 @@ function tabRecon(){
     ['sub','−','Shrinkage / loss',c.B('shrinkage'),'shrinkage'],
     ['sub','−','LCM / NRV write-downs',c.B('writedown'),'writedown'],
     ['sub','−','Purchase price variance',c.B('ppv'),'ppv'],
+    ['add','+','Goods in transit — owned (vendor/customer)',c.itOwned,null,{tied:1,tab:'intransit',gl:'inventory'}],
+    ['add','+','Repaired units returned to stock',c.repairReuse,null,{tied:1,tab:'repair',gl:'inventory'}],
+    ['add','+','Warranty returns to stock',c.warrantyIn,null,{tied:1,tab:'warranty',gl:'inventory'}],
+    ['sub','−','Internal usage &amp; samples',c.internalUse,null,{tied:1,tab:'transfers',gl:'cogs'}],
+    ['sub','−','Warranty replacements shipped',c.warrantyOut,null,{tied:1,tab:'warranty',gl:'cogs'}],
+    ['memo','=','Branch transfers (net $0 — informational)',0,null,{memo:1,tab:'transfers',gross:c.branchGross}],
     ['end','=','Ending inventory per GL',c.glInv,null]
   ];
   const rfDetailCount=state.txns.filter(t=>['receipt','freight','cust_return','count_gain','cogs','vend_return','shrinkage','writedown','ppv'].includes(t.type)).length;
@@ -692,10 +766,11 @@ function tabRecon(){
         <div><span class="eyebrow">Full cycle</span><h2>Inventory roll-forward</h2></div>
         <div class="btn-row"><button class="btn-ghost btn-xs" onclick="rfSetAll(true)">⊕ Expand all</button><button class="btn-ghost btn-xs" onclick="rfSetAll(false)">⊖ Collapse all</button></div>
       </div>
+      <div class="rf-legend"><span class="sw"></span> Teal figures flow into — and tie back to — the inventory roll-forward. Each contributing tab shows its tied total in the same color.</div>
       <div class="rf">
         ${rf.map(r=>rfRowHTML(r)).join('')}
       </div>
-      <p class="muted" style="font-size:12px;margin-top:10px">Expand any line to see its GL accounts and every posting for the period (${rfDetailCount} transactions). Edit a posting in the GL Transactions tab and the cycle re-ties automatically.</p>
+      <p class="muted" style="font-size:12px;margin-top:10px">Expand a journal line to see its GL accounts and every posting for the period (${rfDetailCount} transactions). Movement &amp; service lines (in transit, repair/reuse, internal usage, warranty) tie to their tabs — click ↳ to open. Branch transfers net to $0 company-wide.</p>
     </div>
 
     <div class="card pad">
@@ -727,9 +802,9 @@ function tabRecon(){
 function openField(label,key,val){
   return `<div class="field"><label>${label}</label><input type="number" value="${val}" onchange="setNum('${key}',this.value)"></div>`;
 }
-function tile(lbl,big,sub,ic,badge){
-  return `<div class="tile"><div class="top"><span class="lbl">${esc(lbl)}</span><span class="ic">${ic}</span></div>
-    <div class="big mono">${big}</div><div><span class="badge ${badge}">${esc(sub)}</span></div></div>`;
+function tile(lbl,big,sub,ic,badge,rf){
+  return `<div class="tile"><div class="top"><span class="lbl">${esc(lbl)}${rf?' <span class="rf-chip">roll-fwd</span>':''}</span><span class="ic">${ic}</span></div>
+    <div class="big mono${rf?' rf-tied':''}">${big}</div><div><span class="badge ${badge}">${esc(sub)}</span></div></div>`;
 }
 let rfOpen={};
 function glTagsFor(type){
@@ -738,7 +813,15 @@ function glTagsFor(type){
   return `<span class="gl-tag">Dr ${ACC[def.dr].code} ${esc(ACC[def.dr].name)}</span><span class="gl-tag">Cr ${ACC[def.cr].code} ${esc(ACC[def.cr].name)}</span>`;
 }
 function rfRowHTML(r){
-  const [cls,sign,label,amount,type]=r;
+  const [cls,sign,label,amount,type,opts]=r;
+  // Branch-transfer memo line (net $0, informational)
+  if(opts&&opts.memo){
+    return `<div class="rfrow memo"><div class="lab"><span class="sgn">${sign}</span><span>${label}</span> <span class="rf-jump" onclick="go('${opts.tab}')">↳ transfers</span></div><div class="val">${money(amount)} <span class="muted" style="font-weight:500">(${money(opts.gross)} gross)</span></div></div>`;
+  }
+  // Movement & service lines that tie to another tab (in transit, repair, warranty, internal use)
+  if(opts&&opts.tied){
+    return `<div class="rfrow ${cls}"><div class="lab"><span class="sgn">${sign}</span><span>${label}</span> <span class="gl-tag">${ACC[opts.gl].code}</span> <span class="rf-jump" onclick="go('${opts.tab}')">↳</span></div><div class="val">${money(amount)}</div></div>`;
+  }
   // Beginning / ending balances: simple rows tagged with the control account
   if(!type){
     return `<div class="rfrow ${cls}"><div class="lab"><span class="sgn">${sign}</span><span>${esc(label)}</span> <span class="gl-tag">${ACC.inventory.code}</span></div><div class="val">${money(amount)}</div></div>`;
@@ -996,6 +1079,145 @@ function tabReserve(){
     </div>
   </section>
   <div class="disclaimer tight">⚠️ Reserve, scrap &amp; disposition analysis only. Reserve percentages are a sample policy; align bands, provision and write-off treatment with your valuation policy and QA destruction controls before relying on them.</div>`;
+}
+
+/* ---- IN-TRANSIT tab (vendor / customer) ----------------------------------- */
+function tabIntransit(){
+  const c=compute();
+  const rows=state.intransit.map(t=>`<tr>
+    <td class="mono">${esc(t.ref)}</td>
+    <td><span class="badge ${t.dir==='Inbound'?'b-blue':'b-violet'}">${t.dir}</span></td>
+    <td>${esc(t.party)}</td><td class="mono">${esc(t.sku)}</td><td class="num mono">${num(t.qty)}</td>
+    <td class="num mono${t.owned?' rf-tied':''}">${money(t.value)}</td>
+    <td>${esc(t.terms)}</td>
+    <td>${t.owned?'<span class="badge b-green">Owned — in recon</span>':'<span class="badge b-gray">Title passed</span>'}</td>
+    <td class="mono">${esc(t.eta)}</td></tr>`).join('');
+  const excl=c.itOwned!==undefined?state.intransit.filter(t=>!t.owned).reduce((s,t)=>s+(+t.value||0),0):0;
+  return `
+  <section class="block"><div class="grid g6">
+    ${tile('Owned in transit',money(c.itOwned),'in the roll-forward','🚚','b-green',true)}
+    ${tile('Inbound owned',money(c.itInbound),'vendor · FOB origin','📥','b-blue')}
+    ${tile('Outbound owned',money(c.itOutbound),'customer · FOB destination','📤','b-violet')}
+    ${tile('Title passed (excluded)',money(excl),'not our inventory','🚫','b-gray')}
+    ${tile('Shipments tracked',num(state.intransit.length),'in transit now','🧭','b-indigo')}
+  </div></section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Ownership &amp; cutoff</span><h2>Goods in transit — vendor &amp; customer</h2></div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:880px">
+      <thead><tr><th>Ref</th><th>Direction</th><th>Counterparty</th><th>SKU</th><th class="num">Qty</th><th class="num">Value</th><th>Terms</th><th>Ownership</th><th>ETA</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="5">Owned in transit → inventory roll-forward</td><td class="num mono rf-tied">${money(c.itOwned)}</td><td colspan="3"></td></tr></tfoot>
+    </table></div>
+    <div class="snap"><span class="dot" style="background:var(--rf)"></span><span><b class="rf-tied">${money(c.itOwned)} of owned in-transit goods are inside the recon.</b> Inbound vendor stock on <b>FOB origin</b> and outbound customer stock on <b>FOB destination</b> remain our inventory until delivery, so they add to ending inventory. Goods where title has passed are excluded.</span></div>
+  </section>
+  <div class="disclaimer tight">⚠️ In-transit ownership follows the shipping terms you set per shipment (FOB origin vs destination). Confirm terms and cutoff before relying on the roll-forward inclusion.</div>`;
+}
+
+/* ---- INTERNAL TRANSFERS tab (branches / departments) ---------------------- */
+function tabTransfers(){
+  const c=compute();
+  const rows=state.transfers.slice().sort((a,b)=>a.kind<b.kind?-1:1).map(t=>{
+    const isUse=t.kind==='Internal use';
+    return `<tr>
+      <td class="mono">${esc(t.ref)}</td>
+      <td><span class="badge ${isUse?'b-amber':'b-blue'}">${esc(t.kind)}</span></td>
+      <td>${esc(t.from)}</td><td>${esc(t.to)}</td><td class="mono">${esc(t.sku)}</td><td class="num mono">${num(t.qty)}</td>
+      <td class="num mono${isUse?' rf-tied':''}">${money(t.value)}</td>
+      <td>${esc(t.reason)}</td><td class="mono">${esc(t.date)}</td></tr>`;
+  }).join('');
+  const useByDept={}; state.transfers.filter(t=>t.kind==='Internal use').forEach(t=>useByDept[t.to]=(useByDept[t.to]||0)+(+t.value||0));
+  const topDept=Object.entries(useByDept).sort((a,b)=>b[1]-a[1])[0];
+  return `
+  <section class="block"><div class="grid g6">
+    ${tile('Internal usage &amp; samples',money(c.internalUse),'leaves sellable stock','🎁','b-amber',true)}
+    ${tile('Branch transfers (gross)',money(c.branchGross),'net $0 company-wide','🔀','b-blue')}
+    ${tile('Internal-use lines',num(state.transfers.filter(t=>t.kind==='Internal use').length),'marketing / demo / R&D','🧾','b-violet')}
+    ${tile('Branch moves',num(state.transfers.filter(t=>t.kind==='Branch').length),'cross-branch relocations','🏬','b-indigo')}
+    ${tile('Top consumer',topDept?esc(topDept[0]):'—',topDept?money(topDept[1]):'','📊','b-gray')}
+  </div></section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Grey-area tracking</span><h2>Internal transfers — branches &amp; departments</h2></div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:900px">
+      <thead><tr><th>Ref</th><th>Type</th><th>From</th><th>To / dept</th><th>SKU</th><th class="num">Qty</th><th class="num">Value</th><th>Reason</th><th>Date</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="6">Internal usage → roll-forward subtraction</td><td class="num mono rf-tied">${money(c.internalUse)}</td><td colspan="2"></td></tr></tfoot>
+    </table></div>
+    <div class="snap"><span class="dot" style="background:var(--rf)"></span><span><b>The grey area, tracked up front.</b> <b>Branch transfers</b> relocate stock between locations and net to $0 company-wide (no roll-forward impact). <b>Internal usage</b> — products pulled by Marketing, Sales demos, samples or R&D — permanently leaves sellable inventory, so <b class="rf-tied">${money(c.internalUse)}</b> is a roll-forward subtraction (Dr the using department / Cr inventory).</span></div>
+  </section>
+  <div class="disclaimer tight">⚠️ Internal usage and inter-branch movement are organizational tracking. Departmental charge-outs and branch eliminations should follow your cost-center and consolidation policy.</div>`;
+}
+
+/* ---- REPAIR & REUSE tab --------------------------------------------------- */
+const REPAIR_STAGES=['Received','In repair','Reused to stock','Scrapped'];
+function tabRepair(){
+  const c=compute();
+  const byStage=REPAIR_STAGES.map(st=>{const rs=state.repairs.filter(r=>r.stage===st);return {st,n:rs.length,val:rs.reduce((s,r)=>s+(+r.value||0),0)};});
+  const maxV=Math.max(1,...byStage.map(b=>b.val));
+  const sb=st=>st==='Reused to stock'?'b-green':st==='Scrapped'?'b-red':st==='In repair'?'b-amber':'b-gray';
+  const funnel=byStage.map(b=>`<div class="fnl-row"><div class="fnl-lab"><span class="badge ${sb(b.st)}">${b.st}</span><span class="muted">${b.n}</span></div>
+    <div class="fnl-bar"><i style="width:${Math.round(b.val/maxV*100)}%"></i></div><div class="fnl-val mono${b.st==='Reused to stock'?' rf-tied':''}">${money(b.val)}</div></div>`).join('');
+  const rows=state.repairs.slice().sort((a,b)=>REPAIR_STAGES.indexOf(a.stage)-REPAIR_STAGES.indexOf(b.stage)).map(r=>`<tr>
+    <td class="mono">${esc(r.ticket)}</td><td class="mono">${esc(r.sku)}</td><td>${esc(r.name)}</td><td class="num mono">${num(r.qty)}</td>
+    <td class="num mono${r.stage==='Reused to stock'?' rf-tied':''}">${money(r.value)}</td>
+    <td><span class="badge ${sb(r.stage)}">${esc(r.stage)}</span></td><td class="mono">${esc(r.date)}</td></tr>`).join('');
+  const wip=byStage[0].val+byStage[1].val;
+  return `
+  <section class="block"><div class="grid g6">
+    ${tile('Reused to stock',money(c.repairReuse),'returned to sellable','♻️','b-green',true)}
+    ${tile('In repair (WIP)',money(byStage[1].val),'on the bench','🛠️','b-amber')}
+    ${tile('Received',money(byStage[0].val),'awaiting triage','📥','b-gray')}
+    ${tile('Scrapped',money(byStage[3].val),'beyond repair','🗑️','b-red')}
+    ${tile('Open repair value',money(wip),'received + in repair','🧰','b-blue')}
+    ${tile('Tickets',num(state.repairs.length),'in the workflow','🎫','b-violet')}
+  </div></section>
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Workflow</span><h2>Repair &amp; reuse pipeline</h2></div>
+      <div class="fnl">${funnel}</div>
+      <div class="snap"><span class="dot" style="background:var(--rf)"></span><span><b>Received → in repair → reused or scrapped.</b> Units refurbished back to sellable condition add <b class="rf-tied">${money(c.repairReuse)}</b> to the inventory roll-forward; scrapped units are written off (Reserves &amp; Disposition).</span></div>
+    </div>
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Tickets</span><h2>Repair register</h2></div>
+      <div class="tbl-wrap"><table class="tbl" style="min-width:0">
+        <thead><tr><th>Ticket</th><th>SKU</th><th>Item</th><th class="num">Qty</th><th class="num">Value</th><th>Stage</th><th>Date</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="4">Reused → roll-forward addition</td><td class="num mono rf-tied">${money(c.repairReuse)}</td><td colspan="2"></td></tr></tfoot>
+      </table></div>
+    </div>
+  </section>
+  <div class="disclaimer tight">⚠️ Repair/refurbishment tracking for analysis. Capitalization of repair cost vs. expense, and re-valuation of refurbished units, follow your inventory accounting policy.</div>`;
+}
+
+/* ---- WARRANTY / ASSURANCE tab --------------------------------------------- */
+function tabWarranty(){
+  const c=compute();
+  const net=c.warrantyIn-c.warrantyOut;
+  const scrap=state.warranty.filter(w=>w.kind==='Scrap').reduce((s,w)=>s+(+w.value||0),0);
+  const kb=k=>k==='Replacement out'?'b-amber':k==='Return to stock'?'b-green':'b-red';
+  const rows=state.warranty.slice().map(w=>{
+    const tied=w.kind==='Replacement out'||w.kind==='Return to stock';
+    return `<tr><td class="mono">${esc(w.claim)}</td><td class="mono">${esc(w.sku)}</td><td>${esc(w.name)}</td><td class="num mono">${num(w.qty)}</td>
+      <td class="num mono${tied?' rf-tied':''}">${money(w.value)}</td>
+      <td><span class="badge ${kb(w.kind)}">${esc(w.kind)}</span></td><td>${esc(w.party)}</td><td class="mono">${esc(w.date)}</td></tr>`;
+  }).join('');
+  return `
+  <section class="block"><div class="grid g6">
+    ${tile('Replacements shipped',money(c.warrantyOut),'out of inventory','📤','b-amber',true)}
+    ${tile('Returns to stock',money(c.warrantyIn),'back to inventory','📥','b-green',true)}
+    ${tile('Net inventory impact',money(net),'returns − replacements','⚖️',net>=0?'b-green':'b-amber')}
+    ${tile('Warranty scrap',money(scrap),'failed, not restockable','🗑️',scrap>0?'b-red':'b-green')}
+    ${tile('Claims',num(state.warranty.length),'assurance-type warranty','🛡️','b-violet')}
+  </div></section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Assurance warranty</span><h2>Warranty inventory transactions</h2></div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:880px">
+      <thead><tr><th>Claim</th><th>SKU</th><th>Item</th><th class="num">Qty</th><th class="num">Value</th><th>Type</th><th>Counterparty</th><th>Date</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="4">Roll-forward impact (− out / + in)</td><td class="num mono rf-tied">${money(net)}</td><td colspan="3"></td></tr></tfoot>
+    </table></div>
+    <div class="snap"><span class="dot" style="background:var(--rf)"></span><span><b>Assurance-type warranty.</b> Replacement units shipped to customers leave inventory (<b class="rf-tied">−${money(c.warrantyOut)}</b>, charged to warranty expense/reserve); good returns come back to stock (<b class="rf-tied">+${money(c.warrantyIn)}</b>). Both tie into the roll-forward; non-restockable returns are scrapped.</span></div>
+  </section>
+  <div class="disclaimer tight">⚠️ Warranty inventory tracking only. Assurance vs. service-type warranty treatment, and the warranty reserve, follow ASC 460/606 and your policy.</div>`;
 }
 
 /* ---- RECEIVING / INBOUND tab ---------------------------------------------- */
@@ -1691,7 +1913,13 @@ function exportCSV(){
   L.push('');L.push('ROLL-FORWARD,Amount');
   L.push('Beginning inventory,'+c.OPEN.inventory);
   [['Goods receipts','receipt'],['Freight-in','freight'],['Customer returns','cust_return'],['Count gains','count_gain'],['COGS','cogs'],['Vendor returns','vend_return'],['Shrinkage','shrinkage'],['Write-downs','writedown'],['PPV','ppv']].forEach(([n,k])=>L.push(n+','+c.B(k)));
-  L.push('Ending inventory per GL,'+c.glInv);
+  L.push('Goods in transit owned,'+Math.round(c.itOwned));
+  L.push('Repaired units returned to stock,'+Math.round(c.repairReuse));
+  L.push('Warranty returns to stock,'+Math.round(c.warrantyIn));
+  L.push('Internal usage & samples,'+(-Math.round(c.internalUse)));
+  L.push('Warranty replacements shipped,'+(-Math.round(c.warrantyOut)));
+  L.push('Branch transfers (net),0');
+  L.push('Ending inventory per GL,'+Math.round(c.glInv));
   L.push('');L.push('TIE-OUT,Amount');
   L.push('Perpetual subledger,'+c.perp);L.push('Book vs perpetual,'+c.varBookPerp);
   L.push('Physical count,'+c.phys);L.push('Perpetual vs physical,'+c.varPerpPhys);
@@ -1749,6 +1977,7 @@ function exportMD(){
 - Beginning inventory: ${money(c.OPEN.inventory)}
 - + Receipts ${money(c.B('receipt'))} · + Freight ${money(c.B('freight'))} · + Customer returns ${money(c.B('cust_return'))} · + Count gains ${money(c.B('count_gain'))}
 - − COGS ${money(c.B('cogs'))} · − Vendor returns ${money(c.B('vend_return'))} · − Shrinkage ${money(c.B('shrinkage'))} · − Write-downs ${money(c.B('writedown'))} · − PPV ${money(c.B('ppv'))}
+- + In-transit owned ${money(c.itOwned)} · + Repaired-to-stock ${money(c.repairReuse)} · + Warranty returns ${money(c.warrantyIn)} · − Internal usage ${money(c.internalUse)} · − Warranty replacements ${money(c.warrantyOut)} · Branch transfers net $0
 - **Ending inventory per GL: ${money(c.glInv)}**
 
 ## Tie-out
@@ -1784,7 +2013,7 @@ _Workflow & analysis only — not accounting, tax, or audit advice._`;
 }
 
 /* ---- main render ---------------------------------------------------------- */
-const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,receiving:tabReceiving,cycle:tabCycle,bins:tabBins,lots:tabLots,backorder:tabBackorder,ship:tabShip,reserve:tabReserve,cost:tabCost,prod:tabProd,lifo:tabLifo,turn:tabTurn,review:tabReview};
+const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,receiving:tabReceiving,cycle:tabCycle,bins:tabBins,lots:tabLots,backorder:tabBackorder,ship:tabShip,intransit:tabIntransit,transfers:tabTransfers,repair:tabRepair,warranty:tabWarranty,reserve:tabReserve,cost:tabCost,prod:tabProd,lifo:tabLifo,turn:tabTurn,review:tabReview};
 function render(){ renderTabbar(); $('view').innerHTML=(VIEWS[state.tab]||tabRecon)(); save(); }
 render();
 </script>
