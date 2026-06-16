@@ -155,6 +155,13 @@
   .rftie-row .sgn{font-weight:800;width:14px;text-align:center;flex:none}
   .rftie-row .sgn.pos{color:var(--green)} .rftie-row .sgn.neg{color:var(--red)}
   .rftie-row .val,.rftie-row .mono{white-space:nowrap;flex:none}
+  .rftie-line{border-bottom:1px dashed var(--line)}
+  .rftie-line .rftie-row{border-bottom:0;padding-bottom:3px}
+  .rftie-detwrap{display:flex;flex-direction:column;gap:3px;padding:0 2px 10px 24px}
+  .rftie-det{display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--muted)}
+  .rftie-det-ref{flex:none;min-width:80px;color:var(--ink);font-weight:600}
+  .rftie-det-desc{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rftie-det .mono{flex:none;white-space:nowrap}
   .rftie-total{border-bottom:0;border-top:2px solid var(--rf-line);margin-top:3px;padding-top:11px;font-weight:740}
   .rf .rfrow .gl-tag{font-size:10px;padding:1px 6px}
   .rf .rfrow.begin .gl-tag,.rf .rfrow.end .gl-tag{font-size:10.5px}
@@ -781,18 +788,44 @@ function rfMovements(c){
     {sign:-1, label:'Warranty replacements shipped',              amount:c.warrantyOut, gl:'cogs',      tab:'warranty'}
   ];
 }
-// Teal "ties to roll-forward" panel for any tab a roll-forward line points to
+// The underlying source rows (postings / items) that sum to a roll-forward line amount
+function rfLineDetail(line){
+  const r=(ref,desc,amt,src)=>({ref,desc,amt,src});
+  if(line.type) return state.txns.filter(t=>t.type===line.type).sort((a,b)=>a.date<b.date?-1:1)
+    .map(t=>r(t.ref,t.product,+t.amount||0,'GL Transactions #'+TAB_NUM.gl));
+  if(line.tab==='intransit') return state.intransit.filter(t=>t.owned)
+    .map(t=>r(t.ref,`${t.dir} · ${esc(t.party)} · ${t.sku}`,+t.value||0,'In-Transit #'+TAB_NUM.intransit));
+  if(line.tab==='repair') return state.repairs.filter(x=>x.stage==='Reused to stock')
+    .map(x=>r(x.ticket,`${x.sku} ${x.name}`,+x.value||0,'Repair & Reuse #'+TAB_NUM.repair));
+  if(line.tab==='transfers') return state.transfers.filter(t=>t.kind==='Internal use')
+    .map(t=>r(t.ref,`${t.to} · ${t.sku} · ${t.reason}`,+t.value||0,'Internal Transfers #'+TAB_NUM.transfers));
+  if(line.tab==='warranty'){
+    const out=line.label.toLowerCase().includes('replacement');
+    return state.warranty.filter(w=>w.kind===(out?'Replacement out':'Return to stock'))
+      .map(w=>r(w.claim,`${w.sku} · ${w.party}`,+w.value||0,'Warranty #'+TAB_NUM.warranty));
+  }
+  return [];
+}
+// Teal "ties to roll-forward" panel — each amount broken down to the source rows that sum to it
 function rfTiePanel(tabKey){
   const c=compute();
   const lines=rfMovements(c).filter(l=>l.tab===tabKey);
   if(!lines.length) return '';
   const net=lines.reduce((s,l)=>s+l.sign*l.amount,0);
-  const rows=lines.map(l=>`<div class="rftie-row"><span class="rftie-lab"><span class="sgn ${l.sign>0?'pos':'neg'}">${l.sign>0?'+':'−'}</span>${esc(l.label)} <span class="gl-tag">${ACC[l.gl||'inventory'].code}</span></span><span class="rf-tied mono">${money(l.amount)}</span></div>`).join('');
+  const blocks=lines.map(l=>{
+    const det=rfLineDetail(l);
+    const detRows=det.length?det.map(d=>`<div class="rftie-det"><span class="rftie-det-ref mono">${esc(d.ref)}</span><span class="rftie-det-desc">${esc(d.desc)}</span><span class="rf-tied mono">${money(d.amt)}</span></div>`).join('')
+      :'<div class="rftie-det muted">No source rows for this period.</div>';
+    return `<div class="rftie-line">
+      <div class="rftie-row"><span class="rftie-lab"><span class="sgn ${l.sign>0?'pos':'neg'}">${l.sign>0?'+':'−'}</span>${esc(l.label)} <span class="gl-tag">${ACC[l.gl||'inventory'].code}</span> <span class="rf-count">${det.length}</span></span><span class="rf-tied mono">${money(l.amount)}</span></div>
+      <div class="rftie-detwrap">${detRows}</div>
+    </div>`;
+  }).join('');
   return `<section class="block"><div class="card pad rftie">
     <div class="rftie-head"><span class="rf-chip">roll-forward tie</span><b>Ties to the inventory roll-forward</b> <span class="rf-jump" onclick="go('recon')">↳ #${TAB_NUM.recon} Reconciliation</span></div>
-    ${rows}
+    ${blocks}
     <div class="rftie-row rftie-total"><span class="rftie-lab">Net inventory impact from this tab</span><span class="rf-tied mono">${money(net)}</span></div>
-    <p class="muted" style="font-size:12px;margin-top:8px">These teal figures post through the GL register and roll up into the inventory roll-forward — same color, so you can locate and reconcile each amount.</p>
+    <p class="muted" style="font-size:12px;margin-top:8px">Each teal amount breaks down to the source rows beneath it that sum to it — and rolls up into the inventory roll-forward (#${TAB_NUM.recon}). Same color end-to-end, so you can trace every figure from this tab to the roll-forward.</p>
   </div></section>`;
 }
 
@@ -1222,7 +1255,7 @@ function tabIntransit(){
     <td>${t.owned?'<span class="badge b-green">Owned — in recon</span>':'<span class="badge b-gray">Title passed</span>'}</td>
     <td class="mono">${esc(t.eta)}</td></tr>`).join('');
   const excl=c.itOwned!==undefined?state.intransit.filter(t=>!t.owned).reduce((s,t)=>s+(+t.value||0),0):0;
-  return `
+  return rfTiePanel('intransit') + `
   <section class="block"><div class="grid g6">
     ${tile('Owned in transit',money(c.itOwned),'in the roll-forward','🚚','b-green',true)}
     ${tile('Inbound owned',money(c.itInbound),'vendor · FOB origin','📥','b-blue')}
@@ -1256,7 +1289,7 @@ function tabTransfers(){
   }).join('');
   const useByDept={}; state.transfers.filter(t=>t.kind==='Internal use').forEach(t=>useByDept[t.to]=(useByDept[t.to]||0)+(+t.value||0));
   const topDept=Object.entries(useByDept).sort((a,b)=>b[1]-a[1])[0];
-  return `
+  return rfTiePanel('transfers') + `
   <section class="block"><div class="grid g6">
     ${tile('Internal usage &amp; samples',money(c.internalUse),'leaves sellable stock','🎁','b-amber',true)}
     ${tile('Branch transfers (gross)',money(c.branchGross),'net $0 company-wide','🔀','b-blue')}
@@ -1290,7 +1323,7 @@ function tabRepair(){
     <td class="num mono${r.stage==='Reused to stock'?' rf-tied':''}">${money(r.value)}</td>
     <td><span class="badge ${sb(r.stage)}">${esc(r.stage)}</span></td><td class="mono">${esc(r.date)}</td></tr>`).join('');
   const wip=byStage[0].val+byStage[1].val;
-  return `
+  return rfTiePanel('repair') + `
   <section class="block"><div class="grid g6">
     ${tile('Reused to stock',money(c.repairReuse),'returned to sellable','♻️','b-green',true)}
     ${tile('In repair (WIP)',money(byStage[1].val),'on the bench','🛠️','b-amber')}
@@ -1329,7 +1362,7 @@ function tabWarranty(){
       <td class="num mono${tied?' rf-tied':''}">${money(w.value)}</td>
       <td><span class="badge ${kb(w.kind)}">${esc(w.kind)}</span></td><td>${esc(w.party)}</td><td class="mono">${esc(w.date)}</td></tr>`;
   }).join('');
-  return `
+  return rfTiePanel('warranty') + `
   <section class="block"><div class="grid g6">
     ${tile('Replacements shipped',money(c.warrantyOut),'out of inventory','📤','b-amber',true)}
     ${tile('Returns to stock',money(c.warrantyIn),'back to inventory','📥','b-green',true)}
