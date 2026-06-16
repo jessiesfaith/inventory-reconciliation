@@ -57,7 +57,15 @@
   .btn-xs{padding:5px 9px;font-size:12px;border-radius:8px}
   .btn-row{display:flex;gap:8px;flex-wrap:wrap}
 
-  /* Tab bar */
+  /* Section group bar (top tier) */
+  .groupbar{display:flex;gap:5px;overflow-x:auto;padding-top:8px;scrollbar-width:thin}
+  .grp{padding:8px 14px;font-size:13px;font-weight:650;color:var(--muted);background:none;border:0;border-radius:9px;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+  .grp:hover{color:var(--ink);background:var(--panel2)}
+  .grp.active{color:var(--accent-ink);background:var(--indigo)}
+  .grp .grp-n{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--panel2);color:var(--muted)}
+  .grp.active .grp-n{background:rgba(0,26,0,.18);color:var(--accent-ink)}
+
+  /* Tab bar (sub tier) */
   .tabbar{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin-top:6px;scrollbar-width:thin}
   .tab{padding:11px 14px;font-size:13.5px;font-weight:600;color:var(--muted);background:none;border:0;border-bottom:2px solid transparent;border-radius:0;white-space:nowrap}
   .tab:hover{color:var(--ink)}
@@ -233,7 +241,8 @@
       <button class="btn-ghost btn-xs" onclick="resetAll()">↺ Reset sample</button>
     </div>
   </div>
-  <div class="header-inner" style="padding-top:0;padding-bottom:0">
+  <div class="header-inner" style="padding-top:0;padding-bottom:0;flex-direction:column;align-items:stretch;gap:0">
+    <div class="groupbar" id="groupbar"></div>
     <div class="tabbar" id="tabbar"></div>
   </div>
 </header>
@@ -613,15 +622,30 @@ const TABS=[['recon','Reconciliation'],['gl','GL Transactions'],['liab','Liabili
   ['backorder','Backorders'],['ship','Order Fulfillment'],['reserve','Reserves & Disposition'],
   ['cost','Cost by Invoice & GL'],['prod','Product Costs'],['lifo','LIFO Costing'],
   ['turn','Turnover'],['review','Review & Export']];
+/* Section groups — a horizontal two-tier nav over the 15 tabs */
+const GROUPS=[
+  {key:'overview',label:'Overview',tabs:['recon']},
+  {key:'inbound',label:'Inbound & Storage',tabs:['receiving','cycle','bins','lots']},
+  {key:'demand',label:'Demand & Outbound',tabs:['backorder','ship']},
+  {key:'accounting',label:'Accounting',tabs:['gl','liab','reserve']},
+  {key:'costing',label:'Costing & Valuation',tabs:['cost','prod','lifo']},
+  {key:'analytics',label:'Analytics',tabs:['turn','review']}
+];
+const TAB_LABEL=Object.fromEntries(TABS);
+function groupForTab(t){return GROUPS.find(g=>g.tabs.includes(t))||GROUPS[0];}
 function renderTabbar(){
   const c=compute();
   const pip={gl:state.txns.length,receiving:state.pos.length,cycle:state.counts.length,bins:state.bins.length,
     lots:state.lots.length,backorder:allocMetrics().short,ship:state.orders.filter(o=>o.stage!=='Delivered').length,
     reserve:state.eoItems.length,cost:state.invoices.length,prod:state.products.length,
     lifo:state.lifo.length,review:state.exceptions.filter(e=>e.sev==='Open').length};
-  $('tabbar').innerHTML=TABS.map(([k,label])=>{
+  const active=groupForTab(state.tab);
+  $('groupbar').innerHTML=GROUPS.map(g=>
+    `<button class="grp ${g===active?'active':''}" onclick="goGroup('${g.key}')">${g.label}${g.tabs.length>1?`<span class="grp-n">${g.tabs.length}</span>`:''}</button>`
+  ).join('');
+  $('tabbar').innerHTML=active.tabs.map(k=>{
     const p=pip[k]; const badge=p?`<span class="pip">${p}</span>`:'';
-    return `<button class="tab ${state.tab===k?'active':''}" onclick="go('${k}')">${label}${badge}</button>`;
+    return `<button class="tab ${state.tab===k?'active':''}" onclick="go('${k}')">${TAB_LABEL[k]}${badge}</button>`;
   }).join('');
   $('periodBadge').textContent=`${state.period}`;
   const reconciled=Math.abs(c.varBookPerp)<1;
@@ -629,6 +653,7 @@ function renderTabbar(){
   $('statusBadge').textContent=state.locked?'🔒 Period locked':reconciled?'✓ Reconciled':'⚠ Variance to clear';
 }
 function go(t){state.tab=t;render();window.scrollTo({top:0});}
+function goGroup(key){const g=GROUPS.find(x=>x.key===key);if(g){if(!g.tabs.includes(state.tab))state.tab=g.tabs[0];render();window.scrollTo({top:0});}}
 
 /* ---- RECONCILIATION tab --------------------------------------------------- */
 function tabRecon(){
