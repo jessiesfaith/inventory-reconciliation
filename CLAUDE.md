@@ -88,9 +88,10 @@ Generic workflow rules live in `~/.claude/CLAUDE.md` (they apply to every repo).
   5 service w/ `gl`); it feeds both `tabRecon`'s `rf` array and **`rfTiePanel(tabKey)`** — a teal
   "Ties to the inventory roll-forward" card (class `.rftie`) shown on **all 9 contributing tabs**
   (receiving/cycle/reserve/ship/cost + the 4 movement tabs intransit/transfers/repair/warranty). Each
-  routed line is listed in teal AND **broken down to its source rows** via **`rfLineDetail(line)`**
+  routed line is listed in teal AND **click-to-expand into its source rows** via **`rfLineDetail(line)`**
   (journal lines → `state.txns` filtered by `type`; service lines → their datasets), which sum exactly
-  to the line; plus a net total. So every roll-forward amount is locatable in the same color and
+  to the line; plus a net total. Detail is collapsed by default (`rftieOpen` state, `toggleRftie` /
+  `rftieAll` expand-all/collapse). So every roll-forward amount is locatable in the same color and
   traceable to its postings/items on the tab. `rfTiePanel` tags use `ACC[l.gl||'inventory'].code`.
 - **Engine:** journal-entry driven. `TXN_TYPES` maps each posting type → debit/credit accounts (`ACC`)
   + roll-forward sign; `compute()` derives inventory control, GR/IR, AP from the register, then folds
