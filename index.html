@@ -164,6 +164,19 @@
   .ring-row{display:flex;align-items:center;gap:14px}
   .ring-row .big-num{font-size:38px;font-weight:800;letter-spacing:-.02em;line-height:1}
 
+  /* Bin / location map */
+  .zone{margin-bottom:16px}
+  .zone-head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;font-size:14px}
+  .zone-head .muted{font-size:12px}
+  .bin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px}
+  .bin{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px}
+  .bin.empty{opacity:.6;border-style:dashed}
+  .bin-id{font-size:12px;font-weight:700;color:var(--indigo-ink)}
+  .bin-sku{font-size:12px;margin:2px 0 7px}
+  .bin-bar{height:7px;background:var(--panel2);border-radius:99px;overflow:hidden}
+  .bin-bar i{display:block;height:100%;border-radius:99px}
+  .bin-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:5px;font-variant-numeric:tabular-nums}
+
   /* Cost stack bars */
   .coststack{display:flex;height:13px;border-radius:5px;overflow:hidden;background:var(--panel2);min-width:120px}
   .coststack i{display:block;height:100%}
@@ -211,7 +224,7 @@
       <div class="logo">FI</div>
       <div>
         <div class="name">Inventory Reconciliation</div>
-        <div class="sub">GL · liability · cycle counts · fulfillment · reserves · LIFO · cost · turnover</div>
+        <div class="sub">Receiving · counts · bins · lots · backorders · fulfillment · GL · reserves · LIFO · turnover</div>
       </div>
     </div>
     <div class="header-actions">
@@ -238,7 +251,7 @@
 /* ---------------------------------------------------------------------------
    Inventory Reconciliation — single-file workspace (vanilla JS, localStorage)
    --------------------------------------------------------------------------- */
-const LS_KEY='inv_recon_v4';
+const LS_KEY='inv_recon_v5';
 const $=id=>document.getElementById(id);
 const money=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
 const money2=n=>(n<0?'-$':'$')+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -454,10 +467,67 @@ function seedOrders(){
     {id:id(),ord:'SO-7771',cust:'Regeneron Pharma',item:'Agarose SEC resin ×150',qty:150,value:63000,stage:'Picked',ordered:'2026-05-21',promised:'2026-06-03',carrier:'FedEx',eta:'2026-06-02'}
   ];
 }
+function seedPOs(){
+  // Inbound POs across receiving stages: Open -> In transit -> At dock -> QC hold -> Put away
+  return [
+    {id:id(),po:'PO-9001',vendor:'BioPolymer Sciences',sku:'GB-300',item:'Sepharose base matrix',qtyOrd:240,qtyRcv:240,qtyPut:240,value:72000,stage:'Put away',expected:'2026-05-04',received:'2026-05-03'},
+    {id:id(),po:'PO-9005',vendor:'Northwind Packaging',sku:'PK-2201',item:'Retail cartons',qtyOrd:5000,qtyRcv:5000,qtyPut:5000,value:9200,stage:'Put away',expected:'2026-05-26',received:'2026-05-25'},
+    {id:id(),po:'PO-9002',vendor:'MagnaCore Particles',sku:'GB-200',item:'Magnetic bead slurry',qtyOrd:800,qtyRcv:800,qtyPut:0,value:72000,stage:'At dock',expected:'2026-05-10',received:'2026-05-11'},
+    {id:id(),po:'PO-9007',vendor:'MagnaCore Particles',sku:'GB-500',item:'Silica bead feedstock',qtyOrd:200,qtyRcv:200,qtyPut:0,value:18800,stage:'At dock',expected:'2026-06-12',received:'2026-06-12'},
+    {id:id(),po:'PO-9003',vendor:'Shenzhen Optics & Motion',sku:'INST-NGS-1',item:'Sequencer optical modules',qtyOrd:6,qtyRcv:6,qtyPut:0,value:47400,stage:'QC hold',expected:'2026-05-23',received:'2026-05-22'},
+    {id:id(),po:'PO-9004',vendor:'Precision Fluidics Co.',sku:'INST-LH-3',item:'Liquid-handler Z-stage',qtyOrd:14,qtyRcv:0,qtyPut:0,value:18480,stage:'In transit',expected:'2026-06-18',received:''},
+    {id:id(),po:'PO-9006',vendor:'BioPolymer Sciences',sku:'GB-400',item:'Protein A ligand resin',qtyOrd:30,qtyRcv:0,qtyPut:0,value:24300,stage:'Open',expected:'2026-06-24',received:''}
+  ];
+}
+function seedAlloc(){
+  // Demand (from open orders) vs on-hand -> allocation, available-to-promise, backorder shortfall
+  return [
+    {sku:'GB-300',name:'Sepharose ion-exchange resin',onHand:235,demand:180,allocated:180,unitCost:190,nextEta:'2026-06-18'},
+    {sku:'GB-400',name:'Protein A affinity resin',onHand:22,demand:40,allocated:22,unitCost:810,nextEta:'2026-06-24'},
+    {sku:'INST-NGS-1',name:'BenchSeq NGS sequencer',onHand:6,demand:7,allocated:6,unitCost:73300,nextEta:'2026-06-30'},
+    {sku:'GB-200',name:'Magnetic streptavidin beads',onHand:512,demand:120,allocated:120,unitCost:236,nextEta:'—'},
+    {sku:'GB-100',name:'Agarose SEC resin (5 mL)',onHand:166,demand:180,allocated:166,unitCost:155,nextEta:'2026-06-20'},
+    {sku:'GB-500',name:'Silica DNA-binding beads',onHand:270,demand:200,allocated:200,unitCost:94,nextEta:'—'},
+    {sku:'INST-LH-3',name:'PipetteMax liquid handler',onHand:14,demand:2,allocated:2,unitCost:36100,nextEta:'—'},
+    {sku:'INST-QPCR-2',name:'RapidCycler qPCR system',onHand:6,demand:3,allocated:3,unitCost:22200,nextEta:'—'}
+  ];
+}
+function seedLots(){
+  // Lot/expiry for consumable resins & beads (shelf-life critical). TODAY=2026-06-15.
+  return [
+    {lot:'LOT-A2451',sku:'GB-100',name:'Agarose SEC resin (5 mL)',qty:80,unitCost:155,mfg:'2024-06-10',expiry:'2026-06-10',loc:'Cold-room B'},
+    {lot:'LOT-P0091',sku:'GB-400',name:'Protein A affinity resin',qty:22,unitCost:810,mfg:'2025-01-05',expiry:'2026-07-05',loc:'Cold-room B'},
+    {lot:'LOT-A2460',sku:'GB-100',name:'Agarose SEC resin (5 mL)',qty:100,unitCost:155,mfg:'2024-08-20',expiry:'2026-08-20',loc:'Cold-room B'},
+    {lot:'LOT-B1180',sku:'GB-300',name:'Sepharose ion-exchange resin',qty:95,unitCost:190,mfg:'2024-09-01',expiry:'2026-09-01',loc:'Cold-room A'},
+    {lot:'LOT-B1191',sku:'GB-300',name:'Sepharose ion-exchange resin',qty:140,unitCost:198,mfg:'2025-04-20',expiry:'2026-10-20',loc:'Cold-room A'},
+    {lot:'LOT-S5512',sku:'GB-500',name:'Silica DNA-binding beads',qty:240,unitCost:94,mfg:'2025-06-01',expiry:'2026-12-01',loc:'Cold-room A'},
+    {lot:'LOT-M3304',sku:'GB-200',name:'Magnetic streptavidin beads',qty:300,unitCost:236,mfg:'2025-08-10',expiry:'2027-02-10',loc:'Cold-room A'}
+  ];
+}
+function seedBins(){
+  // Warehouse storage map: bins by zone, qty vs capacity.
+  return [
+    {bin:'A-01',zone:'Cold-room A',sku:'GB-300',qty:235,cap:300},
+    {bin:'A-02',zone:'Cold-room A',sku:'GB-200',qty:512,cap:600},
+    {bin:'A-03',zone:'Cold-room A',sku:'GB-500',qty:270,cap:400},
+    {bin:'A-04',zone:'Cold-room A',sku:'',qty:0,cap:300},
+    {bin:'B-01',zone:'Cold-room B',sku:'GB-100',qty:166,cap:200},
+    {bin:'B-02',zone:'Cold-room B',sku:'GB-400',qty:22,cap:50},
+    {bin:'B-03',zone:'Cold-room B',sku:'',qty:0,cap:200},
+    {bin:'W-01',zone:'Instr. WIP',sku:'INST-NGS-1',qty:6,cap:8},
+    {bin:'W-02',zone:'Instr. WIP',sku:'INST-LH-3',qty:14,cap:16},
+    {bin:'W-03',zone:'Instr. WIP',sku:'INST-EXT-4',qty:9,cap:12},
+    {bin:'D-01',zone:'Dry store',sku:'PK-2201',qty:4950,cap:6000},
+    {bin:'D-02',zone:'Dry store',sku:'RM-LBL',qty:12000,cap:15000},
+    {bin:'Q-01',zone:'QC / Quarantine',sku:'INST-NGS-1',qty:6,cap:20},
+    {bin:'Q-02',zone:'QC / Quarantine',sku:'',qty:0,cap:20}
+  ];
+}
 function defaultState(){
   return {
-    v:4, tab:'recon', lifoSku:'GB-300',
+    v:5, tab:'recon', lifoSku:'GB-300',
     lifo:seedLifo(), counts:seedCounts(), orders:seedOrders(),
+    pos:seedPOs(), alloc:seedAlloc(), lots:seedLots(), bins:seedBins(),
     company:'Helixa Biosystems, Inc.', period:'May 2026',
     openInventory:452000, openGRIR:21500, openAP:96000,
     perpetualEnding:433500, physicalCount:430900, daysBasis:365,
@@ -477,7 +547,9 @@ let _seq=0; function id(){return 'x'+(Date.now().toString(36))+(_seq++).toString
 
 /* ---- persistence ---------------------------------------------------------- */
 let state=load();
-function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===4) return s;}}catch(e){} return defaultState(); }
+function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===5) return s;}}catch(e){} return defaultState(); }
+const TODAY='2026-06-15';
+function daysUntil(d){ return Math.round((new Date(d+'T00:00:00')-new Date(TODAY+'T00:00:00'))/86400000); }
 function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(state));}catch(e){} }
 function resetAll(){ if(confirm('Reset to the sample reconciliation? Your changes will be cleared.')){ state=defaultState(); render(); } }
 
@@ -537,12 +609,14 @@ function turnAnalytics(){
 
 /* ---- tab bar -------------------------------------------------------------- */
 const TABS=[['recon','Reconciliation'],['gl','GL Transactions'],['liab','Liability'],
-  ['cycle','Cycle Counts'],['ship','Order Fulfillment'],['reserve','Reserves & Disposition'],
+  ['receiving','Receiving'],['cycle','Cycle Counts'],['bins','Bin Map'],['lots','Lot & Expiry'],
+  ['backorder','Backorders'],['ship','Order Fulfillment'],['reserve','Reserves & Disposition'],
   ['cost','Cost by Invoice & GL'],['prod','Product Costs'],['lifo','LIFO Costing'],
   ['turn','Turnover'],['review','Review & Export']];
 function renderTabbar(){
   const c=compute();
-  const pip={gl:state.txns.length,cycle:state.counts.length,ship:state.orders.filter(o=>o.stage!=='Delivered').length,
+  const pip={gl:state.txns.length,receiving:state.pos.length,cycle:state.counts.length,bins:state.bins.length,
+    lots:state.lots.length,backorder:allocMetrics().short,ship:state.orders.filter(o=>o.stage!=='Delivered').length,
     reserve:state.eoItems.length,cost:state.invoices.length,prod:state.products.length,
     lifo:state.lifo.length,review:state.exceptions.filter(e=>e.sev==='Open').length};
   $('tabbar').innerHTML=TABS.map(([k,label])=>{
@@ -897,6 +971,194 @@ function tabReserve(){
     </div>
   </section>
   <div class="disclaimer tight">⚠️ Reserve, scrap &amp; disposition analysis only. Reserve percentages are a sample policy; align bands, provision and write-off treatment with your valuation policy and QA destruction controls before relying on them.</div>`;
+}
+
+/* ---- RECEIVING / INBOUND tab ---------------------------------------------- */
+const INBOUND_STAGES=['Open','In transit','At dock','QC hold','Put away'];
+function recvMetrics(){
+  const sum=f=>state.pos.filter(f).reduce((s,p)=>s+(+p.value||0),0);
+  const byStage=INBOUND_STAGES.map(st=>{const ps=state.pos.filter(p=>p.stage===st);return {st,n:ps.length,val:ps.reduce((s,p)=>s+(+p.value||0),0)};});
+  const recvd=state.pos.filter(p=>p.received);
+  const onTime=recvd.filter(p=>p.received<=p.expected);
+  return {byStage,
+    openVal:sum(p=>p.stage==='Open'), inTransitVal:sum(p=>p.stage==='In transit'),
+    atDockVal:sum(p=>p.stage==='At dock'), qcVal:sum(p=>p.stage==='QC hold'),
+    putVal:sum(p=>p.stage==='Put away'),
+    onTimeRate:recvd.length?onTime.length/recvd.length*100:0,
+    dockPending:state.pos.filter(p=>p.qtyRcv>0&&p.qtyPut<p.qtyRcv).length,
+    maxStageVal:Math.max(1,...byStage.map(b=>b.val))};
+}
+function tabReceiving(){
+  const m=recvMetrics();
+  const sb=st=>st==='Put away'?'b-green':st==='QC hold'?'b-red':st==='At dock'?'b-amber':st==='In transit'?'b-blue':'b-gray';
+  const funnel=m.byStage.map(b=>`<div class="fnl-row"><div class="fnl-lab"><span class="badge ${sb(b.st)}">${b.st}</span><span class="muted">${b.n} PO${b.n===1?'':'s'}</span></div>
+    <div class="fnl-bar"><i style="width:${Math.round(b.val/m.maxStageVal*100)}%"></i></div><div class="fnl-val mono">${money(b.val)}</div></div>`).join('');
+  const rows=state.pos.slice().sort((a,b)=>INBOUND_STAGES.indexOf(a.stage)-INBOUND_STAGES.indexOf(b.stage)).map(p=>{
+    const late=p.received&&p.received>p.expected;
+    return `<tr><td class="mono">${esc(p.po)}</td><td>${esc(p.vendor)}</td><td class="mono">${esc(p.sku)}</td><td>${esc(p.item)}</td>
+      <td class="num mono">${num(p.qtyOrd)}</td><td class="num mono">${num(p.qtyRcv)}</td><td class="num mono">${num(p.qtyPut)}</td>
+      <td class="num mono">${money(p.value)}</td><td><span class="badge ${sb(p.stage)}">${esc(p.stage)}</span></td>
+      <td class="mono">${esc(p.expected)}</td><td>${p.received?`<span class="badge ${late?'b-red':'b-green'}">${late?'Late':'On time'}</span>`:'<span class="badge b-gray">—</span>'}</td></tr>`;
+  }).join('');
+  return `
+  <section class="block"><div class="grid g6">
+    ${tile('Open POs',money(m.openVal),'ordered, not shipped','📝','b-gray')}
+    ${tile('Inbound in transit',money(m.inTransitVal),'en route to dock','🚛','b-blue')}
+    ${tile('At dock',money(m.atDockVal),'received, awaiting putaway','📥','b-amber')}
+    ${tile('QC hold',money(m.qcVal),'inspection / quarantine','🔬',m.qcVal>0?'b-red':'b-green')}
+    ${tile('On-time receipt',m.onTimeRate.toFixed(0)+'%','received by expected date','⏱️',m.onTimeRate>=80?'b-green':'b-amber')}
+    ${tile('Dock-to-stock open',num(m.dockPending),'received not put away','📦',m.dockPending?'b-amber':'b-green')}
+  </div></section>
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Pipeline</span><h2>Inbound funnel (PO → putaway)</h2></div>
+      <div class="fnl">${funnel}</div>
+      <div class="snap"><span class="dot" style="background:var(--amber)"></span><span><b>Goods receipt posts the GR/IR liability.</b> Received POs not yet vouchered sit in 2150 GR/IR — see the Liability tab; QC-hold stock is received but not available to promise.</span></div>
+    </div>
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Detail</span><h2>Purchase orders</h2></div>
+      <div class="tbl-wrap"><table class="tbl" style="min-width:0">
+        <thead><tr><th>PO</th><th>Vendor</th><th>SKU</th><th>Item</th><th class="num">Ord</th><th class="num">Rcv</th><th class="num">Put</th><th class="num">Value</th><th>Stage</th><th>Expected</th><th>Receipt</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>
+  </section>
+  <div class="disclaimer tight">⚠️ Receiving analysis only. Putaway and QC status are illustrative; goods-receipt accounting (GR/IR, three-way match) posts through the GL register.</div>`;
+}
+
+/* ---- BACKORDERS / ALLOCATION tab ------------------------------------------ */
+function allocMetrics(){
+  let demand=0,allocated=0,boVal=0,boUnits=0,short=0,atpVal=0;
+  const rows=state.alloc.map(a=>{
+    const atp=Math.max(0,a.onHand-a.allocated), shortU=Math.max(0,a.demand-a.onHand), shortV=shortU*a.unitCost;
+    demand+=a.demand; allocated+=a.allocated; boVal+=shortV; boUnits+=shortU; if(shortU>0)short++; atpVal+=atp*a.unitCost;
+    let st = shortU>0?{label:'Backordered',badge:'b-red'} : a.allocated>=a.demand?{label:'Allocated',badge:'b-green'} : {label:'Partial',badge:'b-amber'};
+    return {a,atp,shortU,shortV,st};
+  });
+  return {rows,demand,allocated,boVal,boUnits,short,atpVal,fillRate:demand?allocated/demand*100:0};
+}
+function tabBackorder(){
+  const m=allocMetrics();
+  const soonest=m.rows.filter(r=>r.shortU>0&&r.a.nextEta&&r.a.nextEta!=='—').map(r=>r.a.nextEta).sort()[0]||'—';
+  const rows=m.rows.slice().sort((a,b)=>b.shortV-a.shortV).map(({a,atp,shortU,shortV,st})=>{
+    const dpct=a.demand?Math.min(100,Math.round(a.onHand/a.demand*100)):100;
+    return `<tr><td class="mono">${esc(a.sku)}</td><td>${esc(a.name)}</td>
+      <td class="num mono">${num(a.onHand)}</td><td class="num mono">${num(a.demand)}</td>
+      <td style="min-width:90px"><div class="coststack" title="${dpct}% of demand covered"><i class="cs-var" style="width:${dpct}%"></i></div></td>
+      <td class="num mono">${num(a.allocated)}</td><td class="num mono">${num(atp)}</td>
+      <td class="num mono">${shortU>0?num(shortU):'—'}</td><td class="num mono" style="color:${shortV>0?'var(--red)':'var(--muted)'}">${shortV>0?money(shortV):'—'}</td>
+      <td class="mono">${esc(a.nextEta)}</td><td><span class="badge ${st.badge}">${st.label}</span></td></tr>`;
+  }).join('');
+  return `
+  <section class="block"><div class="grid g6">
+    ${tile('Backorder value',money(m.boVal),num(m.boUnits)+' units short','⛔',m.boVal>0?'b-red':'b-green')}
+    ${tile('SKUs short',num(m.short),'below demand','📉',m.short?'b-amber':'b-green')}
+    ${tile('Order fill rate',m.fillRate.toFixed(0)+'%','allocated ÷ demand','✅',m.fillRate>=95?'b-green':'b-amber')}
+    ${tile('Available to promise',money(m.atpVal),'on-hand less allocated','🟢','b-blue')}
+    ${tile('Lines backordered',num(m.short),'awaiting replenishment','🧾','b-violet')}
+    ${tile('Soonest replenish',soonest,'next PO receipt','📅','b-gray')}
+  </div></section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Demand vs supply</span><h2>Allocation &amp; backorders</h2></div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:920px">
+      <thead><tr><th>SKU</th><th>Item</th><th class="num">On hand</th><th class="num">Demand</th><th>Coverage</th><th class="num">Allocated</th><th class="num">ATP</th><th class="num">Short u</th><th class="num">Short $</th><th>Next receipt</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="8">Total backorder</td><td class="num mono">${money(m.boVal)}</td><td colspan="2"></td></tr></tfoot>
+    </table></div>
+    <div class="snap"><span class="dot" style="background:${m.boVal>0?'var(--red)':'var(--green)'}"></span><span><b>${m.fillRate.toFixed(0)}% fill rate.</b> ${m.short>0?`${m.short} SKU(s) backordered ($${num(Math.round(m.boVal))}); cover from the next inbound POs (Receiving tab).`:'All demand allocated from on-hand.'}</span></div>
+  </section>
+  <div class="disclaimer tight">⚠️ Allocation is a simple on-hand-vs-demand model. Available-to-promise should respect reservations, safety stock, and inbound timing in your planning system.</div>`;
+}
+
+/* ---- LOT & EXPIRY tab ----------------------------------------------------- */
+function lotStatus(l){const dl=daysUntil(l.expiry);
+  if(dl<0) return {dl,label:'Expired',badge:'b-red',key:'exp'};
+  if(dl<=90) return {dl,label:'Expiring',badge:'b-amber',key:'soon'};
+  return {dl,label:'In date',badge:'b-green',key:'ok'};}
+function lotMetrics(){
+  const lines=state.lots.map(l=>({l,s:lotStatus(l),val:(+l.qty||0)*(+l.unitCost||0)}));
+  const expVal=lines.filter(x=>x.s.key==='exp').reduce((s,x)=>s+x.val,0);
+  const soonVal=lines.filter(x=>x.s.key==='soon').reduce((s,x)=>s+x.val,0);
+  const totVal=lines.reduce((s,x)=>s+x.val,0);
+  const nearest=lines.slice().sort((a,b)=>a.s.dl-b.s.dl)[0];
+  return {lines,expVal,soonVal,totVal,nearest,
+    atRisk:lines.filter(x=>x.s.key!=='ok').length};
+}
+function tabLots(){
+  const m=lotMetrics();
+  const rows=m.lines.slice().sort((a,b)=>a.s.dl-b.s.dl).map(({l,s,val})=>`<tr>
+    <td class="mono">${esc(l.lot)}</td><td class="mono">${esc(l.sku)}</td><td>${esc(l.name)}</td>
+    <td class="num mono">${num(l.qty)}</td><td class="num mono">${money(val)}</td>
+    <td class="mono">${esc(l.mfg)}</td><td class="mono">${esc(l.expiry)}</td>
+    <td class="num mono" style="color:${s.dl<0?'var(--red)':s.dl<=90?'var(--amber)':'var(--ink)'}">${s.dl<0?s.dl:'+'+s.dl}d</td>
+    <td><span class="badge ${s.badge}">${s.label}</span></td><td class="mono">${esc(l.loc)}</td></tr>`).join('');
+  return `
+  <section class="block"><div class="grid g6">
+    ${tile('Lots tracked',num(state.lots.length),'shelf-life SKUs','🏷️','b-violet')}
+    ${tile('Expired (write-off)',money(m.expVal),'past expiry','🛑',m.expVal>0?'b-red':'b-green')}
+    ${tile('Expiring ≤90 days',money(m.soonVal),'sell-through / reserve','⏳',m.soonVal>0?'b-amber':'b-green')}
+    ${tile('At-risk lots',num(m.atRisk),'expired or expiring','⚠️',m.atRisk?'b-amber':'b-green')}
+    ${tile('Nearest expiry',m.nearest?(m.nearest.s.dl<0?m.nearest.s.dl:'+'+m.nearest.s.dl)+'d':'—',m.nearest?esc(m.nearest.l.lot):'','📅',m.nearest&&m.nearest.s.dl<=0?'b-red':'b-amber')}
+    ${tile('Lot inventory value',money(m.totVal),'across tracked lots','Σ','b-blue')}
+  </div></section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">FEFO</span><h2>Lot &amp; expiry register</h2></div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:820px">
+      <thead><tr><th>Lot</th><th>SKU</th><th>Item</th><th class="num">Qty</th><th class="num">Value</th><th>Mfg</th><th>Expiry</th><th class="num">Days</th><th>Status</th><th>Location</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="4">Tracked lot value</td><td class="num mono">${money(m.totVal)}</td><td colspan="5"></td></tr></tfoot>
+    </table></div>
+    <div class="snap"><span class="dot" style="background:${m.expVal>0?'var(--red)':m.soonVal>0?'var(--amber)':'var(--green)'}"></span>
+      <span><b>First-expiry-first-out.</b> ${money(m.expVal)} expired (write-off / scrap — see Reserves &amp; Disposition) and ${money(m.soonVal)} expiring within 90 days to sell through or reserve.</span></div>
+  </section>
+  <div class="disclaimer tight">⚠️ Lot &amp; expiry tracking for analysis only. Expiry-driven write-offs and quarantine must follow your QA release and destruction controls. Dates are sample data; TODAY = ${TODAY}.</div>`;
+}
+
+/* ---- BIN / LOCATION MAP tab ----------------------------------------------- */
+function binUtil(b){return b.cap?b.qty/b.cap*100:0;}
+function binMetrics(){
+  const used=state.bins.filter(b=>b.qty>0), empty=state.bins.filter(b=>b.qty===0);
+  const full=state.bins.filter(b=>binUtil(b)>=90);
+  const totCap=state.bins.reduce((s,b)=>s+b.cap,0), totUsed=state.bins.reduce((s,b)=>s+b.qty,0);
+  const zones=[...new Set(state.bins.map(b=>b.zone))];
+  return {used:used.length,empty:empty.length,full:full.length,zones,
+    util:totCap?totUsed/totCap*100:0};
+}
+function tabBins(){
+  const m=binMetrics();
+  const utilColor=p=>p===0?'var(--muted)':p>=90?'var(--red)':p>=70?'var(--amber)':'var(--green)';
+  const zoneCards=m.zones.map(z=>{
+    const bs=state.bins.filter(b=>b.zone===z);
+    const cards=bs.map(b=>{const p=Math.round(binUtil(b));
+      return `<div class="bin ${b.qty===0?'empty':''}">
+        <div class="bin-id">${esc(b.bin)}</div>
+        <div class="bin-sku mono">${b.sku?esc(b.sku):'<span class="muted">empty</span>'}</div>
+        <div class="bin-bar"><i style="width:${p}%;background:${utilColor(p)}"></i></div>
+        <div class="bin-meta"><span>${num(b.qty)}/${num(b.cap)}</span><span style="color:${utilColor(p)};font-weight:700">${p}%</span></div>
+      </div>`;}).join('');
+    const zUsed=bs.reduce((s,b)=>s+b.qty,0), zCap=bs.reduce((s,b)=>s+b.cap,0);
+    return `<div class="zone"><div class="zone-head"><b>${esc(z)}</b><span class="muted">${bs.length} bins · ${zCap?Math.round(zUsed/zCap*100):0}% full</span></div><div class="bin-grid">${cards}</div></div>`;
+  }).join('');
+  return `
+  <section class="block"><div class="grid g6">
+    ${tile('Locations',num(state.bins.length),m.zones.length+' zones','🗺️','b-violet')}
+    ${tile('Capacity used',m.util.toFixed(0)+'%','across all bins','📊',m.util>=85?'b-amber':'b-green')}
+    ${tile('Full bins',num(m.full),'≥90% utilized','🟥',m.full?'b-red':'b-green')}
+    ${tile('Bins in use',num(m.used),'holding stock','📦','b-blue')}
+    ${tile('Empty bins',num(m.empty),'available capacity','⬜','b-gray')}
+    ${tile('Zones',num(m.zones.length),'cold-room / WIP / dry / QC','🏬','b-indigo')}
+  </div></section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Warehouse</span><h2>Bin &amp; location map</h2></div>
+    ${zoneCards}
+    <div class="leg" style="margin-top:12px">
+      <span class="k"><span class="sw" style="background:var(--green)"></span>&lt;70% utilized</span>
+      <span class="k"><span class="sw" style="background:var(--amber)"></span>70–90%</span>
+      <span class="k"><span class="sw" style="background:var(--red)"></span>≥90% (full)</span>
+      <span class="k"><span class="sw" style="background:var(--muted)"></span>empty</span>
+    </div>
+  </section>
+  <div class="disclaimer tight">⚠️ Location map is illustrative capacity/occupancy. Bin-level quantities should reconcile to the perpetual subledger and the cycle-count program.</div>`;
 }
 
 /* ---- CYCLE COUNTS tab ----------------------------------------------------- */
@@ -1437,6 +1699,16 @@ function exportCSV(){
   L.push('In-progress order value,'+Math.round(sm.inProgVal));
   L.push('In-transit value,'+Math.round(sm.inTransitVal));
   L.push('On-time rate %,'+sm.onTimeRate.toFixed(0));
+  const rm=recvMetrics(), am=allocMetrics(), lm=lotMetrics(), bm=binMetrics();
+  L.push('');L.push('RECEIVING / BACKORDER / LOTS / BINS,Value');
+  L.push('Open + in-transit inbound,'+Math.round(rm.openVal+rm.inTransitVal));
+  L.push('At dock awaiting putaway,'+Math.round(rm.atDockVal));
+  L.push('On-time receipt %,'+rm.onTimeRate.toFixed(0));
+  L.push('Backorder value,'+Math.round(am.boVal));
+  L.push('Order fill rate %,'+am.fillRate.toFixed(0));
+  L.push('Expired lot value,'+Math.round(lm.expVal));
+  L.push('Expiring <=90d value,'+Math.round(lm.soonVal));
+  L.push('Warehouse utilization %,'+bm.util.toFixed(0));
   L.push('');L.push('TURNOVER,Value');
   L.push('Annualized turnover,'+ta.tLatest.toFixed(2));L.push('DIO,'+dio(ta.tLatest).toFixed(0));
   L.push('MoM %,'+ta.mom.delta.toFixed(1));L.push('QoQ %,'+ta.qoq.delta.toFixed(1));
@@ -1487,7 +1759,7 @@ _Workflow & analysis only — not accounting, tax, or audit advice._`;
 }
 
 /* ---- main render ---------------------------------------------------------- */
-const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,cycle:tabCycle,ship:tabShip,reserve:tabReserve,cost:tabCost,prod:tabProd,lifo:tabLifo,turn:tabTurn,review:tabReview};
+const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,receiving:tabReceiving,cycle:tabCycle,bins:tabBins,lots:tabLots,backorder:tabBackorder,ship:tabShip,reserve:tabReserve,cost:tabCost,prod:tabProd,lifo:tabLifo,turn:tabTurn,review:tabReview};
 function render(){ renderTabbar(); $('view').innerHTML=(VIEWS[state.tab]||tabRecon)(); save(); }
 render();
 </script>
