@@ -155,8 +155,13 @@
   .rftie-row .sgn{font-weight:800;width:14px;text-align:center;flex:none}
   .rftie-row .sgn.pos{color:var(--green)} .rftie-row .sgn.neg{color:var(--red)}
   .rftie-row .val,.rftie-row .mono{white-space:nowrap;flex:none}
+  .rftie-head .rftie-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
   .rftie-line{border-bottom:1px dashed var(--line)}
   .rftie-line .rftie-row{border-bottom:0;padding-bottom:3px}
+  .rftie-row.clickable{cursor:pointer;user-select:none}
+  .rftie-row.clickable:hover{background:rgba(255,255,255,.025)}
+  .rftie-row .chev{font-size:11px;color:var(--muted);transition:.16s;display:inline-block;width:11px;flex:none}
+  .rftie-line.open .chev{transform:rotate(90deg)}
   .rftie-detwrap{display:flex;flex-direction:column;gap:3px;padding:0 2px 10px 24px}
   .rftie-det{display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--muted)}
   .rftie-det-ref{flex:none;min-width:80px;color:var(--ink);font-weight:600}
@@ -806,26 +811,31 @@ function rfLineDetail(line){
   }
   return [];
 }
-// Teal "ties to roll-forward" panel — each amount broken down to the source rows that sum to it
+// Teal "ties to roll-forward" panel — click a line to break it down to the source rows that sum to it
+let rftieOpen={};
+function toggleRftie(k){ rftieOpen[k]=!rftieOpen[k]; render(); }
+function rftieAll(tabKey,n,open){ for(let i=0;i<n;i++){ const k=tabKey+'#'+i; if(open) rftieOpen[k]=true; else delete rftieOpen[k]; } render(); }
 function rfTiePanel(tabKey){
   const c=compute();
   const lines=rfMovements(c).filter(l=>l.tab===tabKey);
   if(!lines.length) return '';
   const net=lines.reduce((s,l)=>s+l.sign*l.amount,0);
-  const blocks=lines.map(l=>{
+  const blocks=lines.map((l,i)=>{
+    const key=tabKey+'#'+i, open=!!rftieOpen[key];
     const det=rfLineDetail(l);
     const detRows=det.length?det.map(d=>`<div class="rftie-det"><span class="rftie-det-ref mono">${esc(d.ref)}</span><span class="rftie-det-desc">${esc(d.desc)}</span><span class="rf-tied mono">${money(d.amt)}</span></div>`).join('')
       :'<div class="rftie-det muted">No source rows for this period.</div>';
-    return `<div class="rftie-line">
-      <div class="rftie-row"><span class="rftie-lab"><span class="sgn ${l.sign>0?'pos':'neg'}">${l.sign>0?'+':'−'}</span>${esc(l.label)} <span class="gl-tag">${ACC[l.gl||'inventory'].code}</span> <span class="rf-count">${det.length}</span></span><span class="rf-tied mono">${money(l.amount)}</span></div>
-      <div class="rftie-detwrap">${detRows}</div>
+    return `<div class="rftie-line ${open?'open':''}">
+      <div class="rftie-row clickable" onclick="toggleRftie('${key}')"><span class="rftie-lab"><span class="chev">▸</span><span class="sgn ${l.sign>0?'pos':'neg'}">${l.sign>0?'+':'−'}</span>${esc(l.label)} <span class="gl-tag">${ACC[l.gl||'inventory'].code}</span> <span class="rf-count">${det.length}</span></span><span class="rf-tied mono">${money(l.amount)}</span></div>
+      ${open?`<div class="rftie-detwrap">${detRows}</div>`:''}
     </div>`;
   }).join('');
   return `<section class="block"><div class="card pad rftie">
-    <div class="rftie-head"><span class="rf-chip">roll-forward tie</span><b>Ties to the inventory roll-forward</b> <span class="rf-jump" onclick="go('recon')">↳ #${TAB_NUM.recon} Reconciliation</span></div>
+    <div class="rftie-head"><span class="rf-chip">roll-forward tie</span><b>Ties to the inventory roll-forward</b>
+      <span class="rftie-actions"><span class="rf-jump" onclick="rftieAll('${tabKey}',${lines.length},true)">⊕ expand all</span><span class="rf-jump" onclick="rftieAll('${tabKey}',${lines.length},false)">⊖ collapse</span><span class="rf-jump" onclick="go('recon')">↳ #${TAB_NUM.recon}</span></span></div>
     ${blocks}
     <div class="rftie-row rftie-total"><span class="rftie-lab">Net inventory impact from this tab</span><span class="rf-tied mono">${money(net)}</span></div>
-    <p class="muted" style="font-size:12px;margin-top:8px">Each teal amount breaks down to the source rows beneath it that sum to it — and rolls up into the inventory roll-forward (#${TAB_NUM.recon}). Same color end-to-end, so you can trace every figure from this tab to the roll-forward.</p>
+    <p class="muted" style="font-size:12px;margin-top:8px">Click a teal line to reveal the source rows that sum to it. Each figure rolls up into the inventory roll-forward (#${TAB_NUM.recon}) in the same color, so you can trace every amount from this tab to the roll-forward.</p>
   </div></section>`;
 }
 
