@@ -153,6 +153,17 @@
   @media(max-width:900px){.form-grid{grid-template-columns:1fr 1fr}}
   @media(max-width:560px){.form-grid{grid-template-columns:1fr}}
 
+  /* Fulfillment funnel */
+  .fnl{display:flex;flex-direction:column;gap:9px}
+  .fnl-row{display:grid;grid-template-columns:150px 1fr 92px;align-items:center;gap:10px}
+  .fnl-lab{display:flex;align-items:center;gap:7px;font-size:12px}
+  .fnl-bar{height:14px;background:var(--panel2);border-radius:6px;overflow:hidden}
+  .fnl-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--indigo),#9db4e8);border-radius:6px;min-width:3px}
+  .fnl-val{text-align:right;font-size:12.5px;font-weight:640}
+  @media(max-width:560px){.fnl-row{grid-template-columns:120px 1fr 78px}}
+  .ring-row{display:flex;align-items:center;gap:14px}
+  .ring-row .big-num{font-size:38px;font-weight:800;letter-spacing:-.02em;line-height:1}
+
   /* Cost stack bars */
   .coststack{display:flex;height:13px;border-radius:5px;overflow:hidden;background:var(--panel2);min-width:120px}
   .coststack i{display:block;height:100%}
@@ -200,7 +211,7 @@
       <div class="logo">FI</div>
       <div>
         <div class="name">Inventory Reconciliation</div>
-        <div class="sub">Full-cycle GL · liability · reserves · LIFO · product cost · turnover</div>
+        <div class="sub">GL · liability · cycle counts · fulfillment · reserves · LIFO · cost · turnover</div>
       </div>
     </div>
     <div class="header-actions">
@@ -227,7 +238,7 @@
 /* ---------------------------------------------------------------------------
    Inventory Reconciliation — single-file workspace (vanilla JS, localStorage)
    --------------------------------------------------------------------------- */
-const LS_KEY='inv_recon_v3';
+const LS_KEY='inv_recon_v4';
 const $=id=>document.getElementById(id);
 const money=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
 const money2=n=>(n<0?'-$':'$')+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -407,10 +418,46 @@ function seedLifo(){
     ]}
   ];
 }
+/* ABC cycle-count policy — count frequency + variance tolerance (% of book value) by class */
+const ABC={
+  A:{lbl:'A — high value',freq:'Monthly',tol:0.005},
+  B:{lbl:'B — medium',freq:'Quarterly',tol:0.01},
+  C:{lbl:'C — low value',freq:'Annual',tol:0.02}
+};
+function seedCounts(){
+  // book = perpetual qty; counted = physical (null = not yet counted). Variance drives status.
+  return [
+    {id:id(),loc:'Instr. WIP',sku:'INST-NGS-1',name:'BenchSeq NGS sequencer',cls:'A',book:6,counted:6,unitCost:7900,due:'2026-05-12'},
+    {id:id(),loc:'Cold-room B',sku:'GB-400',name:'Protein A affinity resin',cls:'A',book:24,counted:22,unitCost:810,due:'2026-05-12'},
+    {id:id(),loc:'Cold-room A',sku:'GB-300',name:'Sepharose ion-exchange resin',cls:'A',book:95,counted:95,unitCost:190,due:'2026-05-13'},
+    {id:id(),loc:'Instr. WIP',sku:'INST-LH-3',name:'PipetteMax liquid handler',cls:'A',book:14,counted:14,unitCost:1320,due:'2026-05-14'},
+    {id:id(),loc:'Cold-room A',sku:'GB-200',name:'Magnetic streptavidin beads',cls:'B',book:520,counted:512,unitCost:236,due:'2026-05-19'},
+    {id:id(),loc:'Cold-room B',sku:'GB-100',name:'Agarose SEC resin (5 mL)',cls:'B',book:180,counted:166,unitCost:155,due:'2026-05-20'},
+    {id:id(),loc:'Cold-room A',sku:'GB-500',name:'Silica DNA-binding beads',cls:'B',book:270,counted:270,unitCost:94,due:'2026-05-21'},
+    {id:id(),loc:'Dry store',sku:'PK-2201',name:'Retail cartons',cls:'C',book:5000,counted:4950,unitCost:1.84,due:'2026-05-26'},
+    {id:id(),loc:'Instr. WIP',sku:'INST-EXT-4',name:'GenoPrep extraction robot',cls:'A',book:9,counted:null,unitCost:26100,due:'2026-05-28'},
+    {id:id(),loc:'Cold-room A',sku:'GB-300',name:'Sepharose resin — lot 2',cls:'B',book:140,counted:null,unitCost:198,due:'2026-05-29'},
+    {id:id(),loc:'Dry store',sku:'RM-LBL',name:'Label & insert stock',cls:'C',book:12000,counted:null,unitCost:0.12,due:'2026-05-30'}
+  ];
+}
+function seedOrders(){
+  // In-progress sales orders across the fulfillment pipeline. stage drives the funnel & in-transit value.
+  return [
+    {id:id(),ord:'SO-7741',cust:'Stanford Genomics Core',item:'BenchSeq NGS sequencer ×1',qty:1,value:128000,stage:'In transit',ordered:'2026-05-06',promised:'2026-05-22',carrier:'Cryoport',eta:'2026-05-21'},
+    {id:id(),ord:'SO-7748',cust:'Broad Institute',item:'Protein A resin ×40',qty:40,value:78000,stage:'Shipped',ordered:'2026-05-09',promised:'2026-05-23',carrier:'FedEx Priority',eta:'2026-05-22'},
+    {id:id(),ord:'SO-7752',cust:'Genentech R&D',item:'PipetteMax liquid handler ×2',qty:2,value:122000,stage:'Packed',ordered:'2026-05-12',promised:'2026-05-27',carrier:'UPS Freight',eta:'2026-05-26'},
+    {id:id(),ord:'SO-7759',cust:'UCSF Lab Medicine',item:'Magnetic beads ×120',qty:120,value:81600,stage:'Picked',ordered:'2026-05-15',promised:'2026-05-29',carrier:'FedEx',eta:'2026-05-28'},
+    {id:id(),ord:'SO-7763',cust:'Mayo Clinic Labs',item:'Sepharose resin ×90',qty:90,value:45900,stage:'Open',ordered:'2026-05-18',promised:'2026-05-30',carrier:'—',eta:'2026-06-02'},
+    {id:id(),ord:'SO-7766',cust:'Illumina Ops',item:'Silica DNA beads ×200',qty:200,value:52000,stage:'Open',ordered:'2026-05-20',promised:'2026-06-01',carrier:'—',eta:'2026-06-01'},
+    {id:id(),ord:'SO-7770',cust:'Thermo Fisher OEM',item:'RapidCycler qPCR ×3',qty:3,value:115500,stage:'Shipped',ordered:'2026-05-11',promised:'2026-05-24',carrier:'UPS',eta:'2026-05-25'},
+    {id:id(),ord:'SO-7733',cust:'Cedars-Sinai Research',item:'GenoPrep robot ×1',qty:1,value:44000,stage:'Delivered',ordered:'2026-05-02',promised:'2026-05-16',carrier:'Cryoport',eta:'2026-05-15'},
+    {id:id(),ord:'SO-7771',cust:'Regeneron Pharma',item:'Agarose SEC resin ×150',qty:150,value:63000,stage:'Picked',ordered:'2026-05-21',promised:'2026-06-03',carrier:'FedEx',eta:'2026-06-02'}
+  ];
+}
 function defaultState(){
   return {
-    v:3, tab:'recon', lifoSku:'GB-300',
-    lifo:seedLifo(),
+    v:4, tab:'recon', lifoSku:'GB-300',
+    lifo:seedLifo(), counts:seedCounts(), orders:seedOrders(),
     company:'Helixa Biosystems, Inc.', period:'May 2026',
     openInventory:452000, openGRIR:21500, openAP:96000,
     perpetualEnding:433500, physicalCount:430900, daysBasis:365,
@@ -430,7 +477,7 @@ let _seq=0; function id(){return 'x'+(Date.now().toString(36))+(_seq++).toString
 
 /* ---- persistence ---------------------------------------------------------- */
 let state=load();
-function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===3) return s;}}catch(e){} return defaultState(); }
+function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===4) return s;}}catch(e){} return defaultState(); }
 function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(state));}catch(e){} }
 function resetAll(){ if(confirm('Reset to the sample reconciliation? Your changes will be cleared.')){ state=defaultState(); render(); } }
 
@@ -490,11 +537,13 @@ function turnAnalytics(){
 
 /* ---- tab bar -------------------------------------------------------------- */
 const TABS=[['recon','Reconciliation'],['gl','GL Transactions'],['liab','Liability'],
-  ['reserve','Reserves & Disposition'],['cost','Cost by Invoice & GL'],['prod','Product Costs'],
-  ['lifo','LIFO Costing'],['turn','Turnover'],['review','Review & Export']];
+  ['cycle','Cycle Counts'],['ship','Order Fulfillment'],['reserve','Reserves & Disposition'],
+  ['cost','Cost by Invoice & GL'],['prod','Product Costs'],['lifo','LIFO Costing'],
+  ['turn','Turnover'],['review','Review & Export']];
 function renderTabbar(){
   const c=compute();
-  const pip={gl:state.txns.length,reserve:state.eoItems.length,cost:state.invoices.length,prod:state.products.length,
+  const pip={gl:state.txns.length,cycle:state.counts.length,ship:state.orders.filter(o=>o.stage!=='Delivered').length,
+    reserve:state.eoItems.length,cost:state.invoices.length,prod:state.products.length,
     lifo:state.lifo.length,review:state.exceptions.filter(e=>e.sev==='Open').length};
   $('tabbar').innerHTML=TABS.map(([k,label])=>{
     const p=pip[k]; const badge=p?`<span class="pip">${p}</span>`:'';
@@ -848,6 +897,148 @@ function tabReserve(){
     </div>
   </section>
   <div class="disclaimer tight">⚠️ Reserve, scrap &amp; disposition analysis only. Reserve percentages are a sample policy; align bands, provision and write-off treatment with your valuation policy and QA destruction controls before relying on them.</div>`;
+}
+
+/* ---- CYCLE COUNTS tab ----------------------------------------------------- */
+function countStatus(l){
+  if(l.counted===null||l.counted===''||l.counted===undefined) return {key:'sched',label:'Scheduled',badge:'b-gray',varU:0,varV:0};
+  const varU=(+l.counted)-(+l.book), varV=varU*(+l.unitCost||0), bookV=(+l.book)*(+l.unitCost||0);
+  const tol=(ABC[l.cls]?ABC[l.cls].tol:0.01)*bookV;
+  if(varU===0) return {key:'exact',label:'Accurate',badge:'b-green',varU,varV};
+  if(Math.abs(varV)<=tol) return {key:'tol',label:'Within tol',badge:'b-green',varU,varV};
+  if(Math.abs(varV)>tol*4) return {key:'recount',label:'Recount',badge:'b-red',varU,varV};
+  return {key:'var',label:'Variance',badge:'b-amber',varU,varV};
+}
+function cycleMetrics(){
+  const lines=state.counts.map(l=>({l,s:countStatus(l)}));
+  const counted=lines.filter(x=>x.s.key!=='sched');
+  const accurate=counted.filter(x=>x.s.key==='exact'||x.s.key==='tol');
+  const recounts=counted.filter(x=>x.s.key==='recount');
+  const netVar=counted.reduce((s,x)=>s+x.s.varV,0);
+  const aItems=lines.filter(x=>x.l.cls==='A'), aCounted=aItems.filter(x=>x.s.key!=='sched');
+  return {lines,counted,accurate,recounts,netVar,
+    accuracy:counted.length?accurate.length/counted.length*100:0,
+    due:lines.filter(x=>x.s.key==='sched').length,
+    aCoverage:aItems.length?aCounted.length/aItems.length*100:0};
+}
+function tabCycle(){
+  const m=cycleMetrics();
+  const rows=m.lines.map(({l,s})=>`<tr>
+      <td class="mono">${esc(l.loc)}</td>
+      <td class="mono">${esc(l.sku)}</td>
+      <td>${esc(l.name)}</td>
+      <td><span class="badge ${l.cls==='A'?'b-indigo':l.cls==='B'?'b-blue':'b-gray'}">${l.cls}</span></td>
+      <td class="num mono">${num(l.book)}</td>
+      <td class="num"><input class="inline-edit" style="width:84px" type="number" value="${l.counted===null?'':l.counted}" placeholder="—" onchange="setCount('${l.id}',this.value)"></td>
+      <td class="num mono">${s.key==='sched'?'—':(s.varU>0?'+':'')+num(s.varU)}</td>
+      <td class="num mono" style="color:${s.varV<0?'var(--red)':s.varV>0?'var(--green)':'var(--muted)'}">${s.key==='sched'?'—':money(s.varV)}</td>
+      <td><span class="badge ${s.badge}">${s.label}</span></td>
+      <td class="mono">${esc(l.due)}</td></tr>`).join('');
+  const policy=Object.entries(ABC).map(([k,v])=>`<span class="badge ${k==='A'?'b-indigo':k==='B'?'b-blue':'b-gray'}">${esc(v.lbl)} · ${v.freq} · ±${(v.tol*100).toFixed(1)}%</span>`).join(' ');
+  return `
+  <section class="block">
+    <div class="grid g6">
+      ${tile('Count accuracy',m.accuracy.toFixed(0)+'%',m.accurate.length+'/'+m.counted.length+' within tolerance','🎯',m.accuracy>=95?'b-green':'b-amber')}
+      ${tile('Counts due',num(m.due),'scheduled, not yet counted','📋','b-blue')}
+      ${tile('Net count variance',money(m.netVar),'book vs physical','⚖️',Math.abs(m.netVar)<500?'b-green':'b-amber')}
+      ${tile('A-item coverage',m.aCoverage.toFixed(0)+'%','high-value items counted','🔺',m.aCoverage>=80?'b-green':'b-amber')}
+      ${tile('Open recounts',num(m.recounts.length),'exceed tolerance ×4','🔁',m.recounts.length?'b-red':'b-green')}
+      ${tile('Items in program',num(state.counts.length),'across all locations','🗂️','b-violet')}
+    </div>
+  </section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">ABC policy</span><h2>Cycle-count program</h2></div>
+    <div class="badges" style="margin-bottom:12px">${policy}</div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:860px">
+      <thead><tr><th>Location</th><th>SKU</th><th>Item</th><th>Class</th><th class="num">Book</th><th class="num">Counted</th><th class="num">Var u</th><th class="num">Var $</th><th>Status</th><th>Due</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="7">Net counted variance (${m.counted.length} counted)</td><td class="num mono">${money(m.netVar)}</td><td colspan="2"></td></tr></tfoot>
+    </table></div>
+    <div class="snap"><span class="dot" style="background:${m.accuracy>=95?'var(--green)':'var(--amber)'}"></span>
+      <span><b>${m.accuracy.toFixed(0)}% count accuracy.</b> Net counted variance of ${money(m.netVar)} feeds the perpetual→physical tie-out on the Reconciliation tab; post it via shrinkage / cycle-count-gain entries in the GL Transactions tab.${m.recounts.length?` <b>${m.recounts.length} recount(s)</b> exceed tolerance.`:''}</span></div>
+  </section>
+  <div class="disclaimer tight">⚠️ Cycle-count support only. Counts you enter compute variances against the perpetual book; post approved adjustments through your ERP and the GL register. Tolerances are a sample ABC policy.</div>`;
+}
+function setCount(id,val){const l=state.counts.find(x=>x.id===id);if(l){l.counted=(val===''?null:+val);}render();}
+
+/* ---- ORDER FULFILLMENT tab ------------------------------------------------ */
+const SHIP_STAGES=['Open','Picked','Packed','Shipped','In transit','Delivered'];
+function shipMetrics(){
+  const inProg=state.orders.filter(o=>o.stage!=='Delivered');
+  const inProgVal=inProg.reduce((s,o)=>s+(+o.value||0),0);
+  const inTransitVal=state.orders.filter(o=>o.stage==='Shipped'||o.stage==='In transit').reduce((s,o)=>s+(+o.value||0),0);
+  const readyVal=state.orders.filter(o=>o.stage==='Packed').reduce((s,o)=>s+(+o.value||0),0);
+  const openVal=state.orders.filter(o=>o.stage==='Open').reduce((s,o)=>s+(+o.value||0),0);
+  const dated=state.orders.filter(o=>o.eta&&o.promised);
+  const onTime=dated.filter(o=>o.eta<=o.promised);
+  const byStage=SHIP_STAGES.map(st=>{const os=state.orders.filter(o=>o.stage===st);return {st,n:os.length,val:os.reduce((s,o)=>s+(+o.value||0),0)};});
+  return {inProg,inProgVal,inTransitVal,readyVal,openVal,byStage,
+    onTimeRate:dated.length?onTime.length/dated.length*100:0,
+    maxStageVal:Math.max(1,...byStage.map(b=>b.val))};
+}
+function orderStatus(o){
+  if(o.stage==='Delivered') return {label:'Delivered',badge:'b-green'};
+  if(o.eta&&o.promised) return o.eta<=o.promised?{label:'On track',badge:'b-blue'}:{label:'At risk',badge:'b-red'};
+  return {label:'Open',badge:'b-gray'};
+}
+function tabShip(){
+  const m=shipMetrics();
+  const stageBadge=st=>st==='Delivered'?'b-green':st==='In transit'||st==='Shipped'?'b-blue':st==='Packed'?'b-indigo':st==='Picked'?'b-violet':'b-gray';
+  const funnel=m.byStage.filter(b=>b.st!=='Delivered').map(b=>`
+    <div class="fnl-row">
+      <div class="fnl-lab"><span class="badge ${stageBadge(b.st)}">${b.st}</span><span class="muted">${b.n} order${b.n===1?'':'s'}</span></div>
+      <div class="fnl-bar"><i style="width:${Math.round(b.val/m.maxStageVal*100)}%"></i></div>
+      <div class="fnl-val mono">${money(b.val)}</div>
+    </div>`).join('');
+  const rows=state.orders.slice().sort((a,b)=>SHIP_STAGES.indexOf(a.stage)-SHIP_STAGES.indexOf(b.stage)).map(o=>{
+    const st=orderStatus(o);
+    return `<tr>
+      <td class="mono">${esc(o.ord)}</td><td>${esc(o.cust)}</td><td>${esc(o.item)}</td>
+      <td class="num mono">${money(o.value)}</td>
+      <td><span class="badge ${stageBadge(o.stage)}">${esc(o.stage)}</span></td>
+      <td class="mono">${esc(o.promised)}</td><td class="mono">${esc(o.eta)}</td>
+      <td>${esc(o.carrier)}</td><td><span class="badge ${st.badge}">${st.label}</span></td></tr>`;
+  }).join('');
+  return `
+  <section class="block">
+    <div class="grid g6">
+      ${tile('In-progress orders',num(m.inProg.length),money(m.inProgVal)+' open value','📦','b-indigo')}
+      ${tile('In transit',money(m.inTransitVal),'shipped, not delivered','🚚','b-blue')}
+      ${tile('Ready to ship',money(m.readyVal),'packed, awaiting carrier','📤','b-violet')}
+      ${tile('Awaiting pick',money(m.openVal),'open, not allocated','🕓','b-gray')}
+      ${tile('On-time rate',m.onTimeRate.toFixed(0)+'%','ETA vs promised date','⏱️',m.onTimeRate>=80?'b-green':'b-amber')}
+      ${tile('Delivered',num(m.byStage[5].n),money(m.byStage[5].val)+' this period','✅','b-green')}
+    </div>
+  </section>
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Pipeline</span><h2>Fulfillment funnel (in progress)</h2></div>
+      <div class="fnl">${funnel}</div>
+      <div class="snap"><span class="dot" style="background:var(--blue)"></span>
+        <span><b>${money(m.inTransitVal)} in transit</b> remains owned inventory until delivery (FOB destination) — confirm cutoff so in-transit goods are captured in the period-end inventory and not double-counted.</span></div>
+    </div>
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">On-time</span><h2>Delivery performance</h2></div>
+      <div class="ring-row">
+        <div class="big-num mono" style="color:${m.onTimeRate>=80?'var(--green)':'var(--amber)'}">${m.onTimeRate.toFixed(0)}%</div>
+        <div><div style="font-weight:660">On-time rate</div><div class="muted" style="font-size:12px">orders whose ETA is on or before the promised date</div></div>
+      </div>
+      <div class="kvs" style="margin-top:12px">
+        <div class="k">In-progress order value</div><div class="v">${money(m.inProgVal)}</div>
+        <div class="k">In-transit (cutoff-sensitive)</div><div class="v">${money(m.inTransitVal)}</div>
+        <div class="k">Ready to ship (packed)</div><div class="v">${money(m.readyVal)}</div>
+        <div class="k">Awaiting allocation (open)</div><div class="v">${money(m.openVal)}</div>
+      </div>
+    </div>
+  </section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Orders</span><h2>In-progress &amp; recent orders</h2></div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:920px">
+      <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th class="num">Value</th><th>Stage</th><th>Promised</th><th>ETA</th><th>Carrier</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </section>
+  <div class="disclaimer tight">⚠️ Fulfillment tracking for analysis only. Shipping stages and ETAs are illustrative; reconcile in-transit ownership to your shipping terms (FOB origin vs destination) for period-end inventory cutoff.</div>`;
 }
 
 /* ---- LIFO COSTING tab ----------------------------------------------------- */
@@ -1236,6 +1427,16 @@ function exportCSV(){
   L.push('LIFO reserve (FIFO-LIFO),'+Math.round(lp.reserve));
   L.push('LIFO COGS (period),'+Math.round(lp.lifoCogs));
   L.push('LIFO liquidation units,'+lp.liq);
+  const cm=cycleMetrics(), sm=shipMetrics();
+  L.push('');L.push('CYCLE COUNTS,Value');
+  L.push('Count accuracy %,'+cm.accuracy.toFixed(0));
+  L.push('Net counted variance,'+Math.round(cm.netVar));
+  L.push('Counts due,'+cm.due);L.push('Open recounts,'+cm.recounts.length);
+  L.push('');L.push('ORDER FULFILLMENT,Value');
+  L.push('In-progress orders,'+sm.inProg.length);
+  L.push('In-progress order value,'+Math.round(sm.inProgVal));
+  L.push('In-transit value,'+Math.round(sm.inTransitVal));
+  L.push('On-time rate %,'+sm.onTimeRate.toFixed(0));
   L.push('');L.push('TURNOVER,Value');
   L.push('Annualized turnover,'+ta.tLatest.toFixed(2));L.push('DIO,'+dio(ta.tLatest).toFixed(0));
   L.push('MoM %,'+ta.mom.delta.toFixed(1));L.push('QoQ %,'+ta.qoq.delta.toFixed(1));
@@ -1270,6 +1471,10 @@ function exportMD(){
 - LIFO ending inventory: ${money(lifoPortfolio().lifoEnd)} · FIFO (memo) ${money(lifoPortfolio().fifoEnd)} · **LIFO reserve ${money(lifoPortfolio().reserve)}**
 - LIFO COGS (period): ${money(lifoPortfolio().lifoCogs)}${lifoPortfolio().liq>0?` · LIFO liquidation ${lifoPortfolio().liq} units (old layers consumed)`:''}
 
+## Cycle counts & fulfillment
+- Cycle-count accuracy: ${cycleMetrics().accuracy.toFixed(0)}% · net counted variance ${money(cycleMetrics().netVar)} · ${cycleMetrics().due} due · ${cycleMetrics().recounts.length} recount(s)
+- In-progress orders: ${shipMetrics().inProg.length} worth ${money(shipMetrics().inProgVal)} · ${money(shipMetrics().inTransitVal)} in transit · ${shipMetrics().onTimeRate.toFixed(0)}% on-time
+
 ## Inventory turnover
 - Annualized turnover: **${ta.tLatest.toFixed(2)}×**, DIO ${dio(ta.tLatest).toFixed(0)} days
 - MoM ${pct(ta.mom.delta)} · QoQ ${pct(ta.qoq.delta)} · YTD ${pct(ta.ytd.delta)} · YoY ${pct(ta.yoy.delta)}
@@ -1282,7 +1487,7 @@ _Workflow & analysis only — not accounting, tax, or audit advice._`;
 }
 
 /* ---- main render ---------------------------------------------------------- */
-const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,reserve:tabReserve,cost:tabCost,prod:tabProd,lifo:tabLifo,turn:tabTurn,review:tabReview};
+const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,cycle:tabCycle,ship:tabShip,reserve:tabReserve,cost:tabCost,prod:tabProd,lifo:tabLifo,turn:tabTurn,review:tabReview};
 function render(){ renderTabbar(); $('view').innerHTML=(VIEWS[state.tab]||tabRecon)(); save(); }
 render();
 </script>
