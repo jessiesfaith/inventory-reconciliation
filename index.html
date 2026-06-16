@@ -120,6 +120,20 @@
   .rf .rfrow .val{font-variant-numeric:tabular-nums;font-weight:640}
   .rf .rfrow.begin,.rf .rfrow.end{font-weight:740;font-size:15px;border-bottom:0}
   .rf .rfrow.end{border-top:2px solid var(--line);margin-top:4px;padding-top:12px}
+  .rf .rfrow .gl-tag{font-size:10px;padding:1px 6px}
+  .rf .rfrow.begin .gl-tag,.rf .rfrow.end .gl-tag{font-size:10.5px}
+  .rf .rfrow.expandable{cursor:pointer;user-select:none}
+  .rf .rfrow.expandable:hover{background:rgba(255,255,255,.025)}
+  .rf .rfrow .chev{font-size:11px;color:var(--muted);transition:.16s;display:inline-block;width:11px}
+  .rf .rfrow.expandable.open .chev{transform:rotate(90deg)}
+  .rf .rfrow .gl-mini{display:inline-flex;gap:4px;margin-left:2px}
+  @media(max-width:560px){.rf .rfrow .gl-mini{display:none}}
+  .rf .rfrow .rf-count{font-size:10.5px;background:var(--panel2);color:var(--muted);padding:1px 7px;border-radius:99px;font-weight:700}
+  .rf-detail{padding:4px 0 12px 26px;animation:rfslide .16s ease-out}
+  .rf-detail table.tbl{min-width:0}
+  .rf-detail table.tbl.rf-tbl th,.rf-detail table.tbl.rf-tbl td{padding:6px 9px;font-size:11.5px}
+  .rf-detail .gl-tag{font-size:10px;padding:1px 5px}
+  @keyframes rfslide{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 
   .snap{display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:var(--panel);font-size:13px;margin-top:10px}
   .snap .dot{width:9px;height:9px;border-radius:50%;flex:none} .snap b{font-weight:660}
@@ -475,18 +489,19 @@ function tabRecon(){
     ['Annualized turnover',ta.tLatest.toFixed(2)+'×','DIO '+dio(ta.tLatest).toFixed(0)+' days','🔄','b-green']
   ];
   const rf=[
-    ['begin','',`Beginning inventory — ${esc(state.period.replace(/\\w+ /,'opening '))}`,c.OPEN.inventory],
-    ['add','+','Goods receipts (RNI)',c.B('receipt')],
-    ['add','+','Freight-in capitalized',c.B('freight')],
-    ['add','+','Customer returns to stock',c.B('cust_return')],
-    ['add','+','Cycle-count gains',c.B('count_gain')],
-    ['sub','−','Cost of goods sold',c.B('cogs')],
-    ['sub','−','Returns to vendor',c.B('vend_return')],
-    ['sub','−','Shrinkage / loss',c.B('shrinkage')],
-    ['sub','−','LCM / NRV write-downs',c.B('writedown')],
-    ['sub','−','Purchase price variance',c.B('ppv')],
-    ['end','=','Ending inventory per GL',c.glInv]
+    ['begin','',`Beginning inventory — ${esc(state.period.replace(/\\w+ /,'opening '))}`,c.OPEN.inventory,null],
+    ['add','+','Goods receipts (RNI)',c.B('receipt'),'receipt'],
+    ['add','+','Freight-in capitalized',c.B('freight'),'freight'],
+    ['add','+','Customer returns to stock',c.B('cust_return'),'cust_return'],
+    ['add','+','Cycle-count gains',c.B('count_gain'),'count_gain'],
+    ['sub','−','Cost of goods sold',c.B('cogs'),'cogs'],
+    ['sub','−','Returns to vendor',c.B('vend_return'),'vend_return'],
+    ['sub','−','Shrinkage / loss',c.B('shrinkage'),'shrinkage'],
+    ['sub','−','LCM / NRV write-downs',c.B('writedown'),'writedown'],
+    ['sub','−','Purchase price variance',c.B('ppv'),'ppv'],
+    ['end','=','Ending inventory per GL',c.glInv,null]
   ];
+  const rfDetailCount=state.txns.filter(t=>['receipt','freight','cust_return','count_gain','cogs','vend_return','shrinkage','writedown','ppv'].includes(t.type)).length;
   return `
   <section class="block">
     <div class="grid g6">${tiles.map(t=>tile(...t)).join('')}</div>
@@ -494,11 +509,14 @@ function tabRecon(){
 
   <section class="block grid g2" style="align-items:start">
     <div class="card pad">
-      <div class="section-head"><span class="eyebrow">Full cycle</span><h2>Inventory roll-forward</h2></div>
-      <div class="rf">
-        ${rf.map(r=>`<div class="rfrow ${r[0]}"><div class="lab"><span class="sgn">${r[1]}</span><span>${esc(r[2])}</span></div><div class="val">${money(r[3])}</div></div>`).join('')}
+      <div class="section-head" style="justify-content:space-between">
+        <div><span class="eyebrow">Full cycle</span><h2>Inventory roll-forward</h2></div>
+        <div class="btn-row"><button class="btn-ghost btn-xs" onclick="rfSetAll(true)">⊕ Expand all</button><button class="btn-ghost btn-xs" onclick="rfSetAll(false)">⊖ Collapse all</button></div>
       </div>
-      <p class="muted" style="font-size:12px;margin-top:10px">Every line is derived from the GL Transactions register — edit a posting there and the cycle re-ties automatically.</p>
+      <div class="rf">
+        ${rf.map(r=>rfRowHTML(r)).join('')}
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:10px">Expand any line to see its GL accounts and every posting for the period (${rfDetailCount} transactions). Edit a posting in the GL Transactions tab and the cycle re-ties automatically.</p>
     </div>
 
     <div class="card pad">
@@ -533,6 +551,44 @@ function openField(label,key,val){
 function tile(lbl,big,sub,ic,badge){
   return `<div class="tile"><div class="top"><span class="lbl">${esc(lbl)}</span><span class="ic">${ic}</span></div>
     <div class="big mono">${big}</div><div><span class="badge ${badge}">${esc(sub)}</span></div></div>`;
+}
+let rfOpen={};
+function glTagsFor(type){
+  const def=type?TXN_TYPES[type]:null;
+  if(!def) return `<span class="gl-tag">${ACC.inventory.code} ${esc(ACC.inventory.name)}</span>`;
+  return `<span class="gl-tag">Dr ${ACC[def.dr].code} ${esc(ACC[def.dr].name)}</span><span class="gl-tag">Cr ${ACC[def.cr].code} ${esc(ACC[def.cr].name)}</span>`;
+}
+function rfRowHTML(r){
+  const [cls,sign,label,amount,type]=r;
+  // Beginning / ending balances: simple rows tagged with the control account
+  if(!type){
+    return `<div class="rfrow ${cls}"><div class="lab"><span class="sgn">${sign}</span><span>${esc(label)}</span> <span class="gl-tag">${ACC.inventory.code}</span></div><div class="val">${money(amount)}</div></div>`;
+  }
+  const def=TXN_TYPES[type];
+  const txns=state.txns.filter(t=>t.type===type).sort((a,b)=>a.date<b.date?-1:1);
+  const open=!!rfOpen[type];
+  const head=`<div class="rfrow ${cls} expandable ${open?'open':''}" onclick="toggleRF('${type}')">
+      <div class="lab"><span class="chev">▸</span><span class="sgn">${sign}</span><span>${esc(label)}</span>
+        <span class="gl-mini"><span class="gl-tag">Dr ${ACC[def.dr].code}</span><span class="gl-tag">Cr ${ACC[def.cr].code}</span></span>
+        <span class="rf-count">${txns.length}</span></div>
+      <div class="val">${money(amount)}</div></div>`;
+  if(!open) return head;
+  const body= txns.length ? `<div class="rf-detail">
+      <table class="tbl rf-tbl"><thead><tr><th>Date</th><th>Ref</th><th>Product / memo</th><th>Dr</th><th>Cr</th><th class="num">Amount</th></tr></thead>
+        <tbody>${txns.map(t=>`<tr>
+          <td class="mono">${esc(t.date)}</td><td class="mono">${esc(t.ref)}</td><td>${esc(t.product)}</td>
+          <td><span class="gl-tag">${ACC[def.dr].code}</span></td><td><span class="gl-tag">${ACC[def.cr].code}</span></td>
+          <td class="num mono">${money(t.amount)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="5">${esc(label)} — ${txns.length} posting${txns.length===1?'':'s'}</td><td class="num mono">${money(amount)}</td></tr></tfoot>
+      </table></div>`
+    : `<div class="rf-detail"><div class="empty" style="margin:0">No postings of this type for the period.</div></div>`;
+  return head+body;
+}
+function toggleRF(type){ rfOpen[type]=!rfOpen[type]; render(); }
+function rfSetAll(open){
+  const types=['receipt','freight','cust_return','count_gain','cogs','vend_return','shrinkage','writedown','ppv'];
+  types.forEach(t=>{ if(open) rfOpen[t]=true; else delete rfOpen[t]; });
+  render();
 }
 
 /* ---- GL TRANSACTIONS tab -------------------------------------------------- */
