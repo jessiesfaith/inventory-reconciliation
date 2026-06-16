@@ -621,7 +621,7 @@ function defaultState(){
     intransit:seedIntransit(), transfers:seedTransfers(), repairs:seedRepairs(), warranty:seedWarranty(),
     company:'Helixa Biosystems, Inc.', period:'May 2026',
     openInventory:452000, openGRIR:21500, openAP:96000,
-    perpetualEnding:449800, physicalCount:447200, daysBasis:365,
+    perpetualEnding:449800, physicalCount:447200,
     invoices:seedInvoices(), products:seedProducts(), periods:seedPeriods(),
     reserveOpening:138000, reserveProvision:34000, reserveReversal:4000,
     eoItems:seedEO(), scrap:seedScrap(), returns:seedReturns(),
@@ -795,19 +795,19 @@ function rfMovements(c){
 }
 // The underlying source rows (postings / items) that sum to a roll-forward line amount
 function rfLineDetail(line){
-  const r=(ref,desc,amt,src)=>({ref,desc,amt,src});
+  const r=(ref,desc,amt)=>({ref,desc,amt});
   if(line.type) return state.txns.filter(t=>t.type===line.type).sort((a,b)=>a.date<b.date?-1:1)
-    .map(t=>r(t.ref,t.product,+t.amount||0,'GL Transactions #'+TAB_NUM.gl));
+    .map(t=>r(t.ref,t.product,+t.amount||0));
   if(line.tab==='intransit') return state.intransit.filter(t=>t.owned)
-    .map(t=>r(t.ref,`${t.dir} · ${esc(t.party)} · ${t.sku}`,+t.value||0,'In-Transit #'+TAB_NUM.intransit));
+    .map(t=>r(t.ref,`${t.dir} · ${t.party} · ${t.sku}`,+t.value||0));
   if(line.tab==='repair') return state.repairs.filter(x=>x.stage==='Reused to stock')
-    .map(x=>r(x.ticket,`${x.sku} ${x.name}`,+x.value||0,'Repair & Reuse #'+TAB_NUM.repair));
+    .map(x=>r(x.ticket,`${x.sku} ${x.name}`,+x.value||0));
   if(line.tab==='transfers') return state.transfers.filter(t=>t.kind==='Internal use')
-    .map(t=>r(t.ref,`${t.to} · ${t.sku} · ${t.reason}`,+t.value||0,'Internal Transfers #'+TAB_NUM.transfers));
+    .map(t=>r(t.ref,`${t.to} · ${t.sku} · ${t.reason}`,+t.value||0));
   if(line.tab==='warranty'){
     const out=line.label.toLowerCase().includes('replacement');
     return state.warranty.filter(w=>w.kind===(out?'Replacement out':'Return to stock'))
-      .map(w=>r(w.claim,`${w.sku} · ${w.party}`,+w.value||0,'Warranty #'+TAB_NUM.warranty));
+      .map(w=>r(w.claim,`${w.sku} · ${w.party}`,+w.value||0));
   }
   return [];
 }
@@ -912,11 +912,6 @@ function tile(lbl,big,sub,ic,badge,rf){
     <div class="big mono${rf?' rf-tied':''}">${big}</div><div><span class="badge ${badge}">${esc(sub)}</span></div></div>`;
 }
 let rfOpen={};
-function glTagsFor(type){
-  const def=type?TXN_TYPES[type]:null;
-  if(!def) return `<span class="gl-tag">${ACC.inventory.code} ${esc(ACC.inventory.name)}</span>`;
-  return `<span class="gl-tag">Dr ${ACC[def.dr].code} ${esc(ACC[def.dr].name)}</span><span class="gl-tag">Cr ${ACC[def.cr].code} ${esc(ACC[def.cr].name)}</span>`;
-}
 function rfRowHTML(r){
   const [cls,sign,label,amount,type,opts]=r;
   // Branch-transfer memo line (net $0, informational)
@@ -1264,7 +1259,7 @@ function tabIntransit(){
     <td>${esc(t.terms)}</td>
     <td>${t.owned?'<span class="badge b-green">Owned — in recon</span>':'<span class="badge b-gray">Title passed</span>'}</td>
     <td class="mono">${esc(t.eta)}</td></tr>`).join('');
-  const excl=c.itOwned!==undefined?state.intransit.filter(t=>!t.owned).reduce((s,t)=>s+(+t.value||0),0):0;
+  const excl=state.intransit.filter(t=>!t.owned).reduce((s,t)=>s+(+t.value||0),0);
   return rfTiePanel('intransit') + `
   <section class="block"><div class="grid g6">
     ${tile('Owned in transit',money(c.itOwned),'in the roll-forward','🚚','b-green',true)}
