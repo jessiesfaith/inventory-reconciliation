@@ -86,10 +86,12 @@ Generic workflow rules live in `~/.claude/CLAUDE.md` (they apply to every repo).
   tab's tied total — so users can follow it. Legend + `↳ #N` jump links on the roll-forward.
   **`rfMovements(c)`** is the single source of truth for the 14 movement lines (9 journal w/ `type`,
   5 service w/ `gl`); it feeds both `tabRecon`'s `rf` array and **`rfTiePanel(tabKey)`** — a teal
-  "Ties to the inventory roll-forward" card (class `.rftie`) shown on the 5 journal-detail tabs
-  (receiving/cycle/reserve/ship/cost) that lists the routed line amounts in teal and a net total, so
-  every roll-forward amount is locatable in the same color on its tab. (The 4 movement tabs already
-  show their tied amount in teal via tiles/footers.) `rfTiePanel` tags use `ACC[l.gl||'inventory'].code`.
+  "Ties to the inventory roll-forward" card (class `.rftie`) shown on **all 9 contributing tabs**
+  (receiving/cycle/reserve/ship/cost + the 4 movement tabs intransit/transfers/repair/warranty). Each
+  routed line is listed in teal AND **broken down to its source rows** via **`rfLineDetail(line)`**
+  (journal lines → `state.txns` filtered by `type`; service lines → their datasets), which sum exactly
+  to the line; plus a net total. So every roll-forward amount is locatable in the same color and
+  traceable to its postings/items on the tab. `rfTiePanel` tags use `ACC[l.gl||'inventory'].code`.
 - **Engine:** journal-entry driven. `TXN_TYPES` maps each posting type → debit/credit accounts (`ACC`)
   + roll-forward sign; `compute()` derives inventory control, GR/IR, AP from the register, then folds
   in the six movement buckets so `glInv = glBase + itOwned + repairReuse + warrantyIn − internalUse −
