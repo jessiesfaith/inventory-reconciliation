@@ -200,7 +200,7 @@
       <div class="logo">FI</div>
       <div>
         <div class="name">Inventory Reconciliation</div>
-        <div class="sub">Full-cycle GL · liability · reserves · product cost · turnover</div>
+        <div class="sub">Full-cycle GL · liability · reserves · LIFO · product cost · turnover</div>
       </div>
     </div>
     <div class="header-actions">
@@ -227,7 +227,7 @@
 /* ---------------------------------------------------------------------------
    Inventory Reconciliation — single-file workspace (vanilla JS, localStorage)
    --------------------------------------------------------------------------- */
-const LS_KEY='inv_recon_v2';
+const LS_KEY='inv_recon_v3';
 const $=id=>document.getElementById(id);
 const money=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
 const money2=n=>(n<0?'-$':'$')+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -377,9 +377,40 @@ function seedReturns(){
     {id:id(),rma:'RMA-3331',date:'2026-05-27',sku:'GB-400',name:'Protein A affinity resin',qty:8,unitCost:810,disposition:'Scrap',note:'Temperature excursion in transit'}
   ];
 }
+function seedLifo(){
+  // Per-SKU purchase lots + issues for perpetual LIFO. Rising unit costs → positive LIFO reserve.
+  return [
+    {sku:'GB-300',name:'Sepharose ion-exchange resin',price:510,opening:{units:120,unitCost:175},moves:[
+      {date:'2026-03-05',type:'buy',units:80,unitCost:182},
+      {date:'2026-03-22',type:'sell',units:60},
+      {date:'2026-04-10',type:'buy',units:100,unitCost:190},
+      {date:'2026-04-26',type:'sell',units:90},
+      {date:'2026-05-08',type:'buy',units:120,unitCost:198},
+      {date:'2026-05-20',type:'sell',units:150},
+      {date:'2026-05-30',type:'sell',units:40}
+    ]},
+    {sku:'GB-500',name:'Silica DNA-binding beads',price:260,opening:{units:200,unitCost:88},moves:[
+      {date:'2026-03-12',type:'buy',units:150,unitCost:90},
+      {date:'2026-03-28',type:'sell',units:120},
+      {date:'2026-04-15',type:'buy',units:180,unitCost:93},
+      {date:'2026-04-30',type:'sell',units:160},
+      {date:'2026-05-10',type:'buy',units:160,unitCost:96},
+      {date:'2026-05-22',type:'sell',units:140}
+    ]},
+    {sku:'GB-100',name:'Agarose SEC resin (5 mL)',price:420,opening:{units:90,unitCost:150},moves:[
+      {date:'2026-03-08',type:'buy',units:60,unitCost:154},
+      {date:'2026-03-25',type:'sell',units:50},
+      {date:'2026-04-12',type:'buy',units:80,unitCost:159},
+      {date:'2026-04-28',type:'sell',units:70},
+      {date:'2026-05-09',type:'buy',units:70,unitCost:165},
+      {date:'2026-05-24',type:'sell',units:60}
+    ]}
+  ];
+}
 function defaultState(){
   return {
-    v:2, tab:'recon',
+    v:3, tab:'recon', lifoSku:'GB-300',
+    lifo:seedLifo(),
     company:'Helixa Biosystems, Inc.', period:'May 2026',
     openInventory:452000, openGRIR:21500, openAP:96000,
     perpetualEnding:433500, physicalCount:430900, daysBasis:365,
@@ -399,7 +430,7 @@ let _seq=0; function id(){return 'x'+(Date.now().toString(36))+(_seq++).toString
 
 /* ---- persistence ---------------------------------------------------------- */
 let state=load();
-function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===2) return s;}}catch(e){} return defaultState(); }
+function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===3) return s;}}catch(e){} return defaultState(); }
 function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(state));}catch(e){} }
 function resetAll(){ if(confirm('Reset to the sample reconciliation? Your changes will be cleared.')){ state=defaultState(); render(); } }
 
@@ -460,11 +491,11 @@ function turnAnalytics(){
 /* ---- tab bar -------------------------------------------------------------- */
 const TABS=[['recon','Reconciliation'],['gl','GL Transactions'],['liab','Liability'],
   ['reserve','Reserves & Disposition'],['cost','Cost by Invoice & GL'],['prod','Product Costs'],
-  ['turn','Turnover'],['review','Review & Export']];
+  ['lifo','LIFO Costing'],['turn','Turnover'],['review','Review & Export']];
 function renderTabbar(){
   const c=compute();
   const pip={gl:state.txns.length,reserve:state.eoItems.length,cost:state.invoices.length,prod:state.products.length,
-    review:state.exceptions.filter(e=>e.sev==='Open').length};
+    lifo:state.lifo.length,review:state.exceptions.filter(e=>e.sev==='Open').length};
   $('tabbar').innerHTML=TABS.map(([k,label])=>{
     const p=pip[k]; const badge=p?`<span class="pip">${p}</span>`:'';
     return `<button class="tab ${state.tab===k?'active':''}" onclick="go('${k}')">${label}${badge}</button>`;
@@ -819,6 +850,117 @@ function tabReserve(){
   <div class="disclaimer tight">⚠️ Reserve, scrap &amp; disposition analysis only. Reserve percentages are a sample policy; align bands, provision and write-off treatment with your valuation policy and QA destruction controls before relying on them.</div>`;
 }
 
+/* ---- LIFO COSTING tab ----------------------------------------------------- */
+// Perpetual layer engine. method 'lifo' consumes newest layer first; 'fifo' oldest first.
+function lifoEngine(item,method){
+  let layers=[];
+  const openUnits=item.opening?item.opening.units:0, openCost=item.opening?item.opening.unitCost:0;
+  if(openUnits>0) layers.push({date:'Opening',units:openUnits,unitCost:openCost,opening:true});
+  let cogs=0,sold=0,purch=0,runUnits=openUnits,runVal=openUnits*openCost; const ledger=[];
+  (item.moves||[]).forEach(m=>{
+    if(m.type==='buy'){
+      layers.push({date:m.date,units:m.units,unitCost:m.unitCost,opening:false});
+      purch+=m.units*m.unitCost; runUnits+=m.units; runVal+=m.units*m.unitCost;
+      ledger.push({date:m.date,type:'buy',units:m.units,unitCost:m.unitCost,line:m.units*m.unitCost,detail:`Layer + ${num(m.units)} @ ${money2(m.unitCost)}`,runUnits,runVal});
+    }else{
+      let need=m.units,line=0,det=[];
+      while(need>0 && layers.length){
+        const idx=method==='lifo'?layers.length-1:0; const lyr=layers[idx];
+        const take=Math.min(lyr.units,need); line+=take*lyr.unitCost; det.push(`${num(take)} @ ${money2(lyr.unitCost)}`);
+        lyr.units-=take; need-=take; if(lyr.units===0) layers.splice(idx,1);
+      }
+      cogs+=line; sold+=m.units; runUnits-=m.units; runVal-=line;
+      ledger.push({date:m.date,type:'sell',units:m.units,line,detail:det.join(' · '),runUnits,runVal});
+    }
+  });
+  const endUnits=layers.reduce((s,l)=>s+l.units,0), endVal=layers.reduce((s,l)=>s+l.units*l.unitCost,0);
+  const openRemain=layers.filter(l=>l.opening).reduce((s,l)=>s+l.units,0);
+  return {layers,ledger,cogs,sold,purch,endUnits,endVal,openUnits,liquidated:Math.max(0,openUnits-openRemain)};
+}
+function waCalc(item){
+  const openUnits=item.opening?item.opening.units:0;
+  let units=openUnits, cost=openUnits*(item.opening?item.opening.unitCost:0), sold=0;
+  (item.moves||[]).forEach(m=>{ if(m.type==='buy'){units+=m.units;cost+=m.units*m.unitCost;} else sold+=m.units; });
+  const avg=units?cost/units:0, endUnits=units-sold;
+  return {avg,endUnits,endVal:endUnits*avg,cogs:sold*avg};
+}
+function lifoPortfolio(){
+  let lifoEnd=0,fifoEnd=0,lifoCogs=0,layers=0,liq=0;
+  state.lifo.forEach(it=>{const L=lifoEngine(it,'lifo'),F=lifoEngine(it,'fifo');lifoEnd+=L.endVal;fifoEnd+=F.endVal;lifoCogs+=L.cogs;layers+=L.layers.length;liq+=L.liquidated;});
+  return {lifoEnd,fifoEnd,lifoCogs,reserve:fifoEnd-lifoEnd,layers,liq};
+}
+function tabLifo(){
+  const P=lifoPortfolio();
+  const it=state.lifo.find(x=>x.sku===state.lifoSku)||state.lifo[0];
+  const L=lifoEngine(it,'lifo'), F=lifoEngine(it,'fifo'), W=waCalc(it);
+  const revenue=L.sold*it.price;
+  const reserve=F.endVal-L.endVal;
+  const methodRow=(name,end,cogs,hl)=>{const gp=revenue-cogs,mg=revenue?gp/revenue*100:0;
+    return `<tr class="${hl?'tot':''}"><td><b>${name}</b></td><td class="num mono">${money(end)}</td><td class="num mono">${money(cogs)}</td><td class="num mono">${money(revenue)}</td><td class="num mono">${money(gp)}</td><td class="num mono">${mg.toFixed(1)}%</td></tr>`;};
+  const skuSel=state.lifo.map(x=>`<button class="${x.sku===it.sku?'active':''}" onclick="setLifoSku('${x.sku}')">${esc(x.sku)}</button>`).join('');
+  const layerRows=L.layers.length?L.layers.map(l=>`<tr><td class="mono">${esc(l.date)}</td><td>${l.opening?'<span class="badge b-gray">Opening</span>':'<span class="badge b-indigo">Purchased</span>'}</td><td class="num mono">${num(l.units)}</td><td class="num mono">${money2(l.unitCost)}</td><td class="num mono">${money(l.units*l.unitCost)}</td></tr>`).join('')
+    :'<tr><td colspan="5" class="muted" style="text-align:center">No remaining layers.</td></tr>';
+  const ledRows=L.ledger.map(e=>`<tr>
+      <td class="mono">${esc(e.date)}</td>
+      <td>${e.type==='buy'?'<span class="badge b-green">Buy</span>':'<span class="badge b-amber">Sell</span>'}</td>
+      <td class="num mono">${num(e.units)}</td>
+      <td>${esc(e.detail)}</td>
+      <td class="num mono">${money(e.line)}</td>
+      <td class="num mono">${num(e.runUnits)}</td>
+      <td class="num mono">${money(e.runVal)}</td></tr>`).join('');
+  return `
+  <section class="block">
+    <div class="grid g6">
+      ${tile('LIFO ending inventory',money(P.lifoEnd),'Σ all SKUs · newest sold first','📚','b-indigo')}
+      ${tile('LIFO COGS (period)',money(P.lifoCogs),'higher under rising costs','📤','b-amber')}
+      ${tile('LIFO reserve',money(P.reserve),'FIFO − LIFO inventory','🪙',P.reserve>=0?'b-green':'b-red')}
+      ${tile('FIFO inventory (memo)',money(P.fifoEnd),'current-cost comparison','🧮','b-blue')}
+      ${tile('Open LIFO layers',num(P.layers),'across all SKUs','🥞','b-violet')}
+      ${tile('LIFO liquidation',P.liq>0?num(P.liq)+' u':'None',P.liq>0?'old layers consumed':'no old-layer drawdown','⚠️',P.liq>0?'b-red':'b-green')}
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="section-head" style="justify-content:space-between">
+      <div><span class="eyebrow">Method check</span><h2>LIFO vs FIFO vs weighted-average — ${esc(it.sku)}</h2></div>
+      <div class="seg">${skuSel}</div>
+    </div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:620px">
+      <thead><tr><th>Method</th><th class="num">Ending inventory</th><th class="num">COGS</th><th class="num">Revenue</th><th class="num">Gross profit</th><th class="num">Margin</th></tr></thead>
+      <tbody>
+        ${methodRow('LIFO',L.endVal,L.cogs,true)}
+        ${methodRow('FIFO',F.endVal,F.cogs,false)}
+        ${methodRow('Weighted average',W.endVal,W.cogs,false)}
+      </tbody>
+    </table></div>
+    <div class="snap"><span class="dot" style="background:${reserve>=0?'var(--green)':'var(--red)'}"></span>
+      <span><b>LIFO reserve ${money(reserve)}</b> for ${esc(it.sku)} (FIFO inventory ${money(F.endVal)} − LIFO ${money(L.endVal)}). Under rising costs LIFO books ${money(L.cogs-F.cogs)} more COGS than FIFO, lowering taxable margin.
+      ${L.liquidated>0?` <b>LIFO liquidation:</b> ${num(L.liquidated)} units drawn from the opening layer — old low costs hit COGS and inflate margin this period.`:''}</span></div>
+  </section>
+
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Valuation</span><h2>LIFO layers remaining — ${esc(it.sku)}</h2></div>
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>Acquired</th><th>Layer</th><th class="num">Units</th><th class="num">Unit cost</th><th class="num">Extended</th></tr></thead>
+        <tbody>${layerRows}</tbody>
+        <tfoot><tr><td colspan="2">LIFO ending inventory</td><td class="num mono">${num(L.endUnits)}</td><td></td><td class="num mono">${money(L.endVal)}</td></tr></tfoot>
+      </table></div>
+      <p class="muted" style="font-size:12px;margin-top:10px">Newest purchases are consumed first, so the layers left are the <b>oldest</b> costs — that's why LIFO ending inventory sits below current cost.</p>
+    </div>
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Cost flow</span><h2>LIFO movement worksheet — ${esc(it.sku)}</h2></div>
+      <div class="tbl-wrap"><table class="tbl" style="min-width:560px">
+        <thead><tr><th>Date</th><th>Type</th><th class="num">Units</th><th>Layer / COGS detail</th><th class="num">Line</th><th class="num">Bal u</th><th class="num">Bal $</th></tr></thead>
+        <tbody>${ledRows}</tbody>
+        <tfoot><tr><td colspan="4">Period COGS (LIFO)</td><td class="num mono">${money(L.cogs)}</td><td class="num mono">${num(L.endUnits)}</td><td class="num mono">${money(L.endVal)}</td></tr></tfoot>
+      </table></div>
+    </div>
+  </section>
+  <div class="disclaimer tight">⚠️ LIFO modelling for analysis only. This worksheet uses perpetual LIFO on the lots you enter; a LIFO election, conformity rule, dollar-value/pooled LIFO, and reserve disclosures must follow your tax and GAAP policy. Not accounting or tax advice.</div>`;
+}
+function setLifoSku(s){state.lifoSku=s;render();}
+
 /* ---- COST BY INVOICE & GL tab --------------------------------------------- */
 function tabCost(){
   const v=state.costView||'invoice';
@@ -1087,6 +1229,13 @@ function exportCSV(){
   L.push('Returns recovered (repair/reuse+restock),'+Math.round(rv.recovered));
   L.push('Returns scrapped,'+Math.round(rv.disp['Scrap'].v));
   L.push('Repair & reuse rate %,'+rv.reuseRate.toFixed(1));
+  const lp=lifoPortfolio();
+  L.push('');L.push('LIFO COSTING,Amount');
+  L.push('LIFO ending inventory,'+Math.round(lp.lifoEnd));
+  L.push('FIFO ending inventory (memo),'+Math.round(lp.fifoEnd));
+  L.push('LIFO reserve (FIFO-LIFO),'+Math.round(lp.reserve));
+  L.push('LIFO COGS (period),'+Math.round(lp.lifoCogs));
+  L.push('LIFO liquidation units,'+lp.liq);
   L.push('');L.push('TURNOVER,Value');
   L.push('Annualized turnover,'+ta.tLatest.toFixed(2));L.push('DIO,'+dio(ta.tLatest).toFixed(0));
   L.push('MoM %,'+ta.mom.delta.toFixed(1));L.push('QoQ %,'+ta.qoq.delta.toFixed(1));
@@ -1117,6 +1266,10 @@ function exportMD(){
 - Scrap this period: ${money(rv.scrap$)}
 - Returns: ${money(rv.recovered)} recovered via repair/reuse + restock vs ${money(rv.disp['Scrap'].v)} scrapped (${rv.reuseRate.toFixed(0)}% recovery)
 
+## LIFO costing
+- LIFO ending inventory: ${money(lifoPortfolio().lifoEnd)} · FIFO (memo) ${money(lifoPortfolio().fifoEnd)} · **LIFO reserve ${money(lifoPortfolio().reserve)}**
+- LIFO COGS (period): ${money(lifoPortfolio().lifoCogs)}${lifoPortfolio().liq>0?` · LIFO liquidation ${lifoPortfolio().liq} units (old layers consumed)`:''}
+
 ## Inventory turnover
 - Annualized turnover: **${ta.tLatest.toFixed(2)}×**, DIO ${dio(ta.tLatest).toFixed(0)} days
 - MoM ${pct(ta.mom.delta)} · QoQ ${pct(ta.qoq.delta)} · YTD ${pct(ta.ytd.delta)} · YoY ${pct(ta.yoy.delta)}
@@ -1129,7 +1282,7 @@ _Workflow & analysis only — not accounting, tax, or audit advice._`;
 }
 
 /* ---- main render ---------------------------------------------------------- */
-const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,reserve:tabReserve,cost:tabCost,prod:tabProd,turn:tabTurn,review:tabReview};
+const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,reserve:tabReserve,cost:tabCost,prod:tabProd,lifo:tabLifo,turn:tabTurn,review:tabReview};
 function render(){ renderTabbar(); $('view').innerHTML=(VIEWS[state.tab]||tabRecon)(); save(); }
 render();
 </script>
