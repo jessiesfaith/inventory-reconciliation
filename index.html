@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Inventory Reconciliation — Full-Cycle GL, Liability &amp; Turnover (Preview)</title>
+<meta name="description" content="Full-cycle inventory reconciliation: GL roll-forward, subledger-to-control tie-out, GR/IR and AP liability, product cost by invoice and by GL, product cost catalog (fixed/variable/R&D), and inventory turnover with MoM/QoQ/YTD/YoY. Workflow and analysis only; not accounting, tax, or audit advice." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0a; --panel:#141414; --panel2:#1c1c1c; --ink:#fafaf7; --muted:#a8a59e; --line:rgba(255,255,255,.12);
+    --indigo:#00c805; --indigo-soft:rgba(0,200,5,.12); --indigo-ink:#34d840; --accent-ink:#001a00;
+    --amber:#d2a23a; --amber-soft:rgba(200,154,45,.16); --amber-line:rgba(200,154,45,.42);
+    --green:#00c805; --green-soft:rgba(0,200,5,.14); --green-line:rgba(0,200,5,.42);
+    --red:#ef5d5d; --red-soft:rgba(239,93,93,.14); --red-line:rgba(239,93,93,.42);
+    --blue:#9db4e8; --blue-soft:rgba(26,37,64,.55);
+    --violet:#b69be8; --violet-soft:rgba(120,90,200,.18);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 26px rgba(0,0,0,.5);
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Outfit',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45;-webkit-font-smoothing:antialiased}
+  a{color:var(--indigo)}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 18px 90px}
+  h1,h2,h3,h4{margin:0;font-weight:680;letter-spacing:-.01em}
+  h2{font-size:22px;font-family:'Cormorant Garamond',Georgia,serif;font-weight:600;letter-spacing:0}
+  h3{font-size:15px}
+  p{margin:.35em 0}
+  small{color:var(--muted)} .muted{color:var(--muted)}
+  .mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+  .preview-banner{background:linear-gradient(90deg,#00c805 0%,#006d04 55%,#c89a2d 100%);color:#001a00;text-align:center;font-size:13px;padding:8px 14px;position:sticky;top:0;z-index:40}
+  .preview-banner strong{font-weight:700}
+
+  header.app{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:33px;z-index:30}
+  .header-inner{max-width:1240px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px}
+  .logo{width:34px;height:34px;border-radius:9px;background:var(--indigo);display:grid;place-items:center;color:var(--accent-ink);font-weight:800;font-size:15px}
+  .brand .name{font-size:22px;font-weight:600;letter-spacing:0;font-family:'Cormorant Garamond',Georgia,serif}
+  .brand .sub{font-size:11px;color:var(--muted);margin-top:-2px}
+  .header-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+  button{font-family:inherit;cursor:pointer;border:0;border-radius:10px;font-size:13px;font-weight:600;padding:8px 12px;transition:.12s;display:inline-flex;align-items:center;gap:6px}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .btn-primary{background:var(--indigo);color:var(--accent-ink)}
+  .btn-primary:hover{background:#00e006}
+  .btn-ghost{background:var(--panel2);color:var(--ink);border:1px solid var(--line)}
+  .btn-ghost:hover{border-color:rgba(255,255,255,.2);background:#242424}
+  .btn-soft{background:var(--indigo-soft);color:var(--indigo-ink)}
+  .btn-soft:hover{background:rgba(0,200,5,.2)}
+  .btn-danger{background:var(--panel2);color:var(--red);border:1px solid var(--red-line)}
+  .btn-danger:hover{background:var(--red-soft)}
+  .btn-xs{padding:5px 9px;font-size:12px;border-radius:8px}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+
+  /* Tab bar */
+  .tabbar{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin-top:6px;scrollbar-width:thin}
+  .tab{padding:11px 14px;font-size:13.5px;font-weight:600;color:var(--muted);background:none;border:0;border-bottom:2px solid transparent;border-radius:0;white-space:nowrap}
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--indigo-ink);border-bottom-color:var(--indigo)}
+  .tab .pip{font-size:10.5px;background:var(--panel2);color:var(--muted);padding:1px 7px;border-radius:99px;margin-left:6px;font-weight:700}
+  .tab.active .pip{background:var(--indigo-soft);color:var(--indigo-ink)}
+
+  section.block{margin-top:22px}
+  .section-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .section-head .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--indigo);font-weight:700}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card.pad{padding:16px}
+  .grid{display:grid;gap:14px}
+  .g6{grid-template-columns:repeat(6,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:1040px){.g6{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:900px){.g4{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr}.g2{grid-template-columns:1fr}}
+  @media(max-width:620px){.g6,.g4,.g3{grid-template-columns:1fr}.header-actions{width:100%}}
+
+  .tile{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);display:flex;flex-direction:column;gap:5px}
+  .tile .big{font-size:23px;font-weight:780;letter-spacing:-.02em}
+  .tile .lbl{font-size:11.5px;color:var(--muted);font-weight:600}
+  .tile .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:15px;background:var(--indigo-soft)}
+  .tile .top{display:flex;align-items:center;justify-content:space-between}
+  .tile .delta{font-size:12px;font-weight:700}
+  .up{color:var(--green)} .down{color:var(--red)} .flat{color:var(--muted)}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:999px;line-height:1;border:1px solid transparent;white-space:nowrap}
+  .b-amber{background:var(--amber-soft);color:var(--amber);border-color:var(--amber-line)}
+  .b-green{background:var(--green-soft);color:var(--green);border-color:var(--green-line)}
+  .b-blue{background:var(--blue-soft);color:var(--blue)}
+  .b-indigo{background:var(--indigo-soft);color:var(--indigo-ink)}
+  .b-red{background:var(--red-soft);color:var(--red);border-color:var(--red-line)}
+  .b-violet{background:var(--violet-soft);color:var(--violet)}
+  .b-gray{background:var(--panel2);color:var(--muted)}
+  .badges{display:flex;gap:7px;flex-wrap:wrap}
+
+  .disclaimer{font-size:12px;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line);border-radius:10px;padding:9px 12px;display:flex;gap:8px;align-items:flex-start}
+  .disclaimer.tight{margin-top:10px}
+  .legal-foot{font-size:11.5px;color:var(--muted);margin-top:8px}
+
+  /* Tables */
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+  table.tbl{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px}
+  table.tbl th,table.tbl td{padding:9px 11px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;position:sticky;top:0;background:var(--panel2)}
+  table.tbl td.num,table.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+  table.tbl tr:last-child td{border-bottom:0}
+  table.tbl tr:hover td{background:rgba(255,255,255,.02)}
+  table.tbl tfoot td{font-weight:700;border-top:2px solid var(--line);background:var(--panel2)}
+  table.tbl tr.tot td{font-weight:700;background:var(--indigo-soft)}
+  .gl-tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+
+  /* Roll-forward */
+  .rf{display:flex;flex-direction:column;gap:0}
+  .rf .rfrow{display:flex;justify-content:space-between;align-items:center;padding:9px 4px;border-bottom:1px dashed var(--line);font-size:13.5px}
+  .rf .rfrow .lab{display:flex;align-items:center;gap:9px}
+  .rf .rfrow .sgn{width:18px;text-align:center;font-weight:800;color:var(--muted)}
+  .rf .rfrow.add .sgn{color:var(--green)} .rf .rfrow.sub .sgn{color:var(--red)}
+  .rf .rfrow .val{font-variant-numeric:tabular-nums;font-weight:640}
+  .rf .rfrow.begin,.rf .rfrow.end{font-weight:740;font-size:15px;border-bottom:0}
+  .rf .rfrow.end{border-top:2px solid var(--line);margin-top:4px;padding-top:12px}
+
+  .snap{display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:var(--panel);font-size:13px;margin-top:10px}
+  .snap .dot{width:9px;height:9px;border-radius:50%;flex:none} .snap b{font-weight:660}
+
+  /* Sub-tabs (segmented) */
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2)}
+  .seg button{border-radius:0;background:none;color:var(--muted);padding:7px 14px}
+  .seg button.active{background:var(--indigo);color:var(--accent-ink)}
+
+  /* Forms */
+  .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+  .field label{font-size:12px;font-weight:600;color:var(--muted)}
+  .field input,.field select,.field textarea{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--ink);width:100%}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--indigo-soft);border-color:var(--indigo)}
+  .inline-edit{font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--ink);width:130px;text-align:right;font-variant-numeric:tabular-nums}
+  .form-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0 12px}
+  @media(max-width:900px){.form-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.form-grid{grid-template-columns:1fr}}
+
+  /* Cost stack bars */
+  .coststack{display:flex;height:13px;border-radius:5px;overflow:hidden;background:var(--panel2);min-width:120px}
+  .coststack i{display:block;height:100%}
+  .cs-var{background:#00c805} .cs-fix{background:#9db4e8} .cs-rd{background:#b69be8} .cs-oh{background:#d2a23a}
+  .leg{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);align-items:center;margin-top:8px}
+  .leg .k{display:flex;align-items:center;gap:5px} .leg .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  /* Chart */
+  .chart-card{padding:14px}
+  .chart-wrap{width:100%;overflow:hidden}
+  svg.chart{width:100%;height:auto;display:block}
+  .chart-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px;align-items:center}
+  .chart-legend .k{display:flex;align-items:center;gap:6px}
+  .chart-legend .bar{width:12px;height:12px;border-radius:3px;background:var(--indigo-soft);border:1px solid var(--green-line)}
+  .chart-legend .ln{width:18px;height:0;border-top:2px solid var(--amber)}
+
+  /* Sign-off */
+  .signoff{display:flex;gap:12px;flex-wrap:wrap}
+  .signoff .so{flex:1;min-width:200px;border:1px solid var(--line);border-radius:11px;padding:12px;background:var(--panel2)}
+  .signoff .so .role{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+  .signoff .so .who{font-size:14px;font-weight:660;margin-top:4px}
+  .signoff .so .when{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .signoff .so.signed{border-color:var(--green-line);background:var(--green-soft)}
+
+  .logrow{display:flex;gap:10px;font-size:12px;padding:7px 0;border-bottom:1px dashed var(--line);align-items:flex-start}
+  .logrow .when{color:var(--muted);min-width:96px;flex:none}
+  .empty{padding:16px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--line);border-radius:11px;background:var(--panel2);margin-top:10px}
+
+  .exp{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:11px;background:var(--panel)}
+  .exp .ic{width:32px;height:32px;border-radius:8px;background:var(--indigo-soft);display:grid;place-items:center;font-size:15px;flex:none}
+  .exp .meta{flex:1;min-width:0}.exp .meta .t{font-size:13px;font-weight:660}.exp .meta .d{font-size:11.5px;color:var(--muted)}
+
+  .kvs{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;align-items:center}
+  .kvs .k{color:var(--muted)} .kvs .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:640}
+  .lock-note{font-size:12px;color:var(--muted);margin-top:8px}
+  .row-flex{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+<div class="preview-banner">📦 <strong>Preview</strong> — Inventory Reconciliation workspace. Sample data, runs entirely in your browser. Workflow &amp; analysis only — not accounting, tax, or audit advice.</div>
+
+<header class="app">
+  <div class="header-inner">
+    <div class="brand">
+      <div class="logo">FI</div>
+      <div>
+        <div class="name">Inventory Reconciliation</div>
+        <div class="sub">Full-cycle GL · liability · reserves · product cost · turnover</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span id="periodBadge" class="badge b-indigo">—</span>
+      <span id="statusBadge" class="badge b-gray">—</span>
+      <button class="btn-ghost btn-xs" onclick="resetAll()">↺ Reset sample</button>
+    </div>
+  </div>
+  <div class="header-inner" style="padding-top:0;padding-bottom:0">
+    <div class="tabbar" id="tabbar"></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="view"></div>
+  <div class="legal-foot">
+    Inventory Reconciliation is a workflow &amp; analysis workspace. It organizes a reconciliation and computes ratios from
+    figures you enter or import; it does not post journal entries to any ledger, produce financial statements, or constitute
+    accounting, tax, or audit advice. Validate all figures against your system of record before relying on them.
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------------------------
+   Inventory Reconciliation — single-file workspace (vanilla JS, localStorage)
+   --------------------------------------------------------------------------- */
+const LS_KEY='inv_recon_v2';
+const $=id=>document.getElementById(id);
+const money=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString();
+const money2=n=>(n<0?'-$':'$')+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const num=n=>Math.round(n).toLocaleString();
+const pct=n=>(n>=0?'+':'')+n.toFixed(1)+'%';
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* Chart of accounts touched by the inventory cycle */
+const ACC={
+  inventory:{code:'1300',name:'Inventory (control)',normal:'D'},
+  freightcap:{code:'1310',name:'Freight-in (capitalized)',normal:'D'},
+  grir:{code:'2150',name:'GR/IR clearing',normal:'C'},
+  ap:{code:'2100',name:'Accounts payable',normal:'C'},
+  accrued:{code:'2160',name:'Accrued inventory liab.',normal:'C'},
+  cogs:{code:'5000',name:'Cost of goods sold',normal:'D'},
+  shrink:{code:'5150',name:'Inventory shrinkage',normal:'D'},
+  ppv:{code:'5120',name:'Purchase price variance',normal:'D'},
+  writedown:{code:'5160',name:'LCM / NRV write-down',normal:'D'},
+  cash:{code:'1000',name:'Cash',normal:'D'}
+};
+/* Standard inventory + liability transaction types -> double entry + roll-forward sign */
+const TXN_TYPES={
+  receipt:    {label:'Goods receipt (RNI)',     dr:'inventory', cr:'grir',      rf:'add', grp:'Receipts'},
+  freight:    {label:'Freight-in (capitalized)',dr:'inventory', cr:'ap',        rf:'add', grp:'Freight-in'},
+  cust_return:{label:'Customer return to stock', dr:'inventory', cr:'cogs',      rf:'add', grp:'Customer returns'},
+  count_gain: {label:'Cycle-count gain',         dr:'inventory', cr:'shrink',    rf:'add', grp:'Count gains'},
+  cogs:       {label:'Cost of goods sold',       dr:'cogs',      cr:'inventory', rf:'sub', grp:'COGS'},
+  vend_return:{label:'Return to vendor',         dr:'ap',        cr:'inventory', rf:'sub', grp:'Vendor returns'},
+  shrinkage:  {label:'Shrinkage / loss',         dr:'shrink',    cr:'inventory', rf:'sub', grp:'Shrinkage'},
+  writedown:  {label:'LCM / NRV write-down',     dr:'writedown', cr:'inventory', rf:'sub', grp:'Write-downs'},
+  ppv:        {label:'Purchase price variance',  dr:'ppv',       cr:'inventory', rf:'sub', grp:'PPV'},
+  voucher:    {label:'Vendor invoice voucher',   dr:'grir',      cr:'ap',        rf:'none',grp:'Vouchering'},
+  payment:    {label:'AP payment',               dr:'ap',        cr:'cash',      rf:'none',grp:'AP payments'}
+};
+/* GL targets available when costing an invoice line */
+const LINE_GL={inventory:'1300 Inventory',freightcap:'1310 Freight-in',ppv:'5120 PPV'};
+
+/* ---- sample data ---------------------------------------------------------- */
+function seedPeriods(){
+  // 24 monthly periods ending 2026-05. Inventory mean-reverts toward ~2.2x monthly COGS
+  // (≈ 5–6x annualized turnover, ~65-day DIO); mild upward COGS trend + seasonality.
+  const out=[]; let y=2024,m=6;
+  let beg=Math.round(192000*2.2);
+  for(let i=0;i<24;i++){
+    const seas=Math.round(13000*Math.sin(i/12*2*Math.PI));
+    const cogs=Math.round(192000+i*2300+seas*0.7);
+    const target=Math.round(cogs*2.15+seas+(i%4===0?12000:-6000)); // desired ending level
+    const end=Math.round(beg+(target-beg)*0.55);                    // move toward target (reverts)
+    out.push({ym:`${y}-${String(m).padStart(2,'0')}`,beg,end,cogs});
+    beg=end; m++; if(m>12){m=1;y++;}
+  }
+  return out;
+}
+function seedTxns(){
+  const d='2026-05';
+  return [
+    {id:id(),date:d+'-03',ref:'GR-5512',type:'receipt',product:'GB-300 Sepharose base matrix',qty:240,amount:90000,loc:'Cold-room A'},
+    {id:id(),date:d+'-09',ref:'GR-5519',type:'receipt',product:'GB-200 Magnetic bead slurry',qty:800,amount:72000,loc:'Cold-room A'},
+    {id:id(),date:d+'-17',ref:'GR-5531',type:'receipt',product:'INST-NGS-1 Sequencer optical modules',qty:6,amount:48000,loc:'Instr. WIP'},
+    {id:id(),date:d+'-04',ref:'FRT-2231',type:'freight',product:'Cold-chain freight — GR-5512',qty:1,amount:3400,loc:'Cold-room A'},
+    {id:id(),date:d+'-10',ref:'FRT-2240',type:'freight',product:'Cold-chain freight — GR-5519',qty:1,amount:3400,loc:'Cold-room A'},
+    {id:id(),date:d+'-12',ref:'VCH-8841',type:'voucher',product:'BioPolymer Sciences inv 22841',qty:1,amount:88000,loc:''},
+    {id:id(),date:d+'-16',ref:'VCH-8850',type:'voucher',product:'MagnaCore Particles inv 7741',qty:1,amount:70000,loc:''},
+    {id:id(),date:d+'-23',ref:'VCH-8862',type:'voucher',product:'Shenzhen Optics & Motion inv 5521',qty:1,amount:47000,loc:''},
+    {id:id(),date:d+'-25',ref:'PAY-4410',type:'payment',product:'AP run — 3 vendors',qty:1,amount:158000,loc:''},
+    {id:id(),date:d+'-28',ref:'SO-COGS-05',type:'cogs',product:'COGS — genomic instruments shipped',qty:1,amount:140000,loc:''},
+    {id:id(),date:d+'-31',ref:'SO-COGS-05b',type:'cogs',product:'COGS — gel beads & resins',qty:1,amount:88000,loc:''},
+    {id:id(),date:d+'-20',ref:'RET-C-118',type:'cust_return',product:'GB-200 sealed beads returned to stock',qty:30,amount:4200,loc:'Cold-room A'},
+    {id:id(),date:d+'-21',ref:'RET-V-076',type:'vend_return',product:'GB-200 off-spec slurry returned to vendor',qty:35,amount:3100,loc:'Cold-room A'},
+    {id:id(),date:d+'-30',ref:'CC-ADJ-05',type:'shrinkage',product:'Cycle-count shrink — Cold-room A',qty:1,amount:2600,loc:'Cold-room A'},
+    {id:id(),date:d+'-30',ref:'CC-ADJ-05g',type:'count_gain',product:'Cycle-count gain — Instr. WIP',qty:1,amount:1500,loc:'Instr. WIP'},
+    {id:id(),date:d+'-31',ref:'WD-NRV-05',type:'writedown',product:'NRV write-down — GB-100 past shelf-life',qty:1,amount:5200,loc:'Cold-room B'},
+    {id:id(),date:d+'-31',ref:'PPV-05',type:'ppv',product:'Purchase price variance — May',qty:1,amount:3800,loc:''}
+  ];
+}
+function seedInvoices(){
+  return [
+    {id:id(),inv:'INV-22841',vendor:'BioPolymer Sciences',date:'2026-05-04',lines:[
+      {sku:'GB-300',desc:'Sepharose base matrix — ion-exchange',qty:240,unitCost:300.00,gl:'inventory'},
+      {sku:'GB-300',desc:'Cold-chain inbound freight',qty:1,unitCost:3400,gl:'freightcap'},
+      {sku:'GB-300',desc:'Price variance vs standard',qty:1,unitCost:1100,gl:'ppv'}
+    ]},
+    {id:id(),inv:'INV-7741',vendor:'MagnaCore Particles',date:'2026-05-10',lines:[
+      {sku:'GB-200',desc:'Magnetic streptavidin bead slurry',qty:800,unitCost:87.50,gl:'inventory'},
+      {sku:'GB-200',desc:'Cold-chain inbound freight',qty:1,unitCost:3400,gl:'freightcap'},
+      {sku:'GB-200',desc:'Price variance vs standard',qty:1,unitCost:1700,gl:'ppv'}
+    ]},
+    {id:id(),inv:'INV-5521',vendor:'Shenzhen Optics & Motion',date:'2026-05-23',lines:[
+      {sku:'INST-NGS-1',desc:'BenchSeq optical detection module',qty:6,unitCost:7900.00,gl:'inventory'},
+      {sku:'INST-NGS-1',desc:'Price variance vs standard',qty:1,unitCost:1000,gl:'ppv'}
+    ]},
+    {id:id(),inv:'INV-9904',vendor:'Precision Fluidics Co.',date:'2026-05-26',lines:[
+      {sku:'INST-LH-3',desc:'Liquid-handler pipetting Z-stage',qty:14,unitCost:1320.00,gl:'inventory'},
+      {sku:'INST-LH-3',desc:'Inbound freight allocation',qty:1,unitCost:520,gl:'freightcap'}
+    ]}
+  ];
+}
+function seedProducts(){
+  // Biotech product line — gel beads / resins (consumables) + genomic instruments (machinery).
+  // Per-unit standard cost composition + list price.
+  return [
+    // Gel beads & chromatography resins (consumables — priced per pack/mL)
+    {sku:'GB-100',name:'Agarose SEC resin (5 mL)',cat:'Gel beads',variable:95.00,fixed:28.00,rd:14.00,overhead:18.00,price:420.00},
+    {sku:'GB-200',name:'Magnetic streptavidin beads',cat:'Gel beads',variable:140.00,fixed:40.00,rd:30.00,overhead:26.00,price:680.00},
+    {sku:'GB-300',name:'Sepharose ion-exchange resin',cat:'Gel beads',variable:120.00,fixed:32.00,rd:18.00,overhead:20.00,price:510.00},
+    {sku:'GB-400',name:'Protein A affinity resin',cat:'Gel beads',variable:520.00,fixed:120.00,rd:90.00,overhead:80.00,price:1950.00},
+    {sku:'GB-500',name:'Silica DNA-binding beads',cat:'Gel beads',variable:58.00,fixed:16.00,rd:9.00,overhead:11.00,price:260.00},
+    // Genomic machinery / instruments (priced per unit)
+    {sku:'INST-NGS-1',name:'BenchSeq NGS sequencer',cat:'Instrument',variable:42000,fixed:14000,rd:9500,overhead:7800,price:128000},
+    {sku:'INST-QPCR-2',name:'RapidCycler qPCR system',cat:'Instrument',variable:13200,fixed:4100,rd:2600,overhead:2300,price:38500},
+    {sku:'INST-LH-3',name:'PipetteMax liquid handler',cat:'Instrument',variable:21500,fixed:6800,rd:4200,overhead:3600,price:61000},
+    {sku:'INST-EXT-4',name:'GenoPrep extraction robot',cat:'Instrument',variable:15400,fixed:4900,rd:3100,overhead:2700,price:44000}
+  ];
+}
+/* Excess & obsolete reserve policy — reserve % by days since last movement / expiry */
+const RESERVE_POLICY=[
+  {band:'0–90 days',max:90,pct:0},
+  {band:'91–180 days',max:180,pct:10},
+  {band:'181–365 days',max:365,pct:35},
+  {band:'>365 days / expired',max:Infinity,pct:100}
+];
+function seedEO(){
+  // On-hand excess/obsolete candidates; band & reserve % derived from lastDays via policy.
+  return [
+    {sku:'GB-100',name:'Agarose SEC resin (5 mL)',onHand:180,unitCost:155,lastDays:410,reason:'Past labeled shelf-life'},
+    {sku:'GB-300',name:'Sepharose ion-exchange resin',onHand:95,unitCost:190,lastDays:220,reason:'Slow-moving vs demand'},
+    {sku:'GB-400',name:'Protein A affinity resin',onHand:22,unitCost:810,lastDays:150,reason:'Excess on-hand'},
+    {sku:'GB-500',name:'Silica DNA-binding beads',onHand:240,unitCost:94,lastDays:70,reason:'Watch — ageing'},
+    {sku:'INST-QPCR-2',name:'RapidCycler qPCR (rev B)',onHand:6,unitCost:22200,lastDays:300,reason:'Superseded by rev C'},
+    {sku:'INST-EXT-4',name:'GenoPrep robot (demo / B-stock)',onHand:3,unitCost:26100,lastDays:480,reason:'Obsolete firmware, demo units'}
+  ];
+}
+function seedScrap(){
+  return [
+    {id:id(),date:'2026-05-14',sku:'GB-100',name:'Agarose SEC resin — expired lots',qty:40,unitCost:155,reason:'Expired / failed QC'},
+    {id:id(),date:'2026-05-22',sku:'GB-300',name:'Sepharose resin — column contamination',qty:18,unitCost:190,reason:'Contaminated'},
+    {id:id(),date:'2026-05-29',sku:'GB-500',name:'Silica beads — bridging defect',qty:25,unitCost:94,reason:'QC failure'}
+  ];
+}
+function seedReturns(){
+  // RMA disposition flow: returned -> Repair & reuse | Restock | Scrap
+  return [
+    {id:id(),rma:'RMA-3310',date:'2026-05-08',sku:'INST-QPCR-2',name:'RapidCycler qPCR system',qty:2,unitCost:22200,disposition:'Repair & reuse',note:'Thermal block reseated, recalibrated'},
+    {id:id(),rma:'RMA-3315',date:'2026-05-13',sku:'INST-LH-3',name:'PipetteMax liquid handler',qty:1,unitCost:36100,disposition:'Repair & reuse',note:'Z-stage motor replaced, refurb to stock'},
+    {id:id(),rma:'RMA-3322',date:'2026-05-19',sku:'GB-200',name:'Magnetic streptavidin beads (sealed)',qty:30,unitCost:236,disposition:'Restock',note:'Unopened, cold-chain intact'},
+    {id:id(),rma:'RMA-3327',date:'2026-05-24',sku:'INST-EXT-4',name:'GenoPrep extraction robot',qty:1,unitCost:26100,disposition:'Scrap',note:'Water-damaged fluidics, beyond repair'},
+    {id:id(),rma:'RMA-3331',date:'2026-05-27',sku:'GB-400',name:'Protein A affinity resin',qty:8,unitCost:810,disposition:'Scrap',note:'Temperature excursion in transit'}
+  ];
+}
+function defaultState(){
+  return {
+    v:2, tab:'recon',
+    company:'Helixa Biosystems, Inc.', period:'May 2026',
+    openInventory:452000, openGRIR:21500, openAP:96000,
+    perpetualEnding:433500, physicalCount:430900, daysBasis:365,
+    txns:seedTxns(), invoices:seedInvoices(), products:seedProducts(), periods:seedPeriods(),
+    reserveOpening:138000, reserveProvision:34000, reserveReversal:4000,
+    eoItems:seedEO(), scrap:seedScrap(), returns:seedReturns(),
+    exceptions:[
+      {id:id(),when:'2026-05-31',sev:'Open',text:'GL-to-perpetual variance of -$1,700 in Cold-room A — investigating receipt cutoff GR-5531.'},
+      {id:id(),when:'2026-05-31',sev:'Open',text:'Perpetual-to-physical count short $2,600 — recount scheduled, shrink accrual booked.'},
+      {id:id(),when:'2026-05-31',sev:'Open',text:'GB-100 agarose resin past shelf-life — $27.9K reserved at 100%, scrap disposition pending QA sign-off.'}
+    ],
+    signoff:{preparer:null,reviewer:null,approver:null}, locked:false,
+    costView:'invoice'
+  };
+}
+let _seq=0; function id(){return 'x'+(Date.now().toString(36))+(_seq++).toString(36);}
+
+/* ---- persistence ---------------------------------------------------------- */
+let state=load();
+function load(){ try{const r=localStorage.getItem(LS_KEY); if(r){const s=JSON.parse(r); if(s&&s.v===2) return s;}}catch(e){} return defaultState(); }
+function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(state));}catch(e){} }
+function resetAll(){ if(confirm('Reset to the sample reconciliation? Your changes will be cleared.')){ state=defaultState(); render(); } }
+
+/* ---- compute engine ------------------------------------------------------- */
+function compute(){
+  const debit={},credit={},bucket={};
+  const add=(o,k,v)=>{o[k]=(o[k]||0)+v;};
+  state.txns.forEach(t=>{
+    const def=TXN_TYPES[t.type]; if(!def) return;
+    add(debit,def.dr,+t.amount||0); add(credit,def.cr,+t.amount||0);
+    bucket[t.type]=(bucket[t.type]||0)+(+t.amount||0);
+  });
+  const OPEN={inventory:+state.openInventory||0,grir:+state.openGRIR||0,ap:+state.openAP||0};
+  const bal=k=>{const a=ACC[k];const o=OPEN[k]||0;const d=debit[k]||0,c=credit[k]||0;return a.normal==='D'?o+d-c:o+c-d;};
+  const B=k=>bucket[k]||0;
+  const glInv=bal('inventory'), grir=bal('grir'), ap=bal('ap');
+  const perp=+state.perpetualEnding||0, phys=+state.physicalCount||0;
+  return {debit,credit,bucket,B,bal,OPEN,glInv,grir,ap,perp,phys,
+    varBookPerp:glInv-perp, varPerpPhys:perp-phys, varBookPhys:glInv-phys};
+}
+
+/* ---- turnover analytics --------------------------------------------------- */
+function avgInv(p){return (p.beg+p.end)/2;}
+function annTurn(p){const a=avgInv(p);return a?(p.cogs*12)/a:0;}
+function dio(turn){return turn?365/turn:0;}
+function groupTurn(arr){ // annualized turnover for a set of consecutive months
+  if(!arr.length) return 0;
+  const cogs=arr.reduce((s,p)=>s+p.cogs,0);
+  const a=(arr[0].beg+arr[arr.length-1].end)/2;
+  return a?(cogs*(12/arr.length))/a:0;
+}
+function turnAnalytics(){
+  const P=state.periods; const n=P.length;
+  const latest=P[n-1], prev=P[n-2];
+  const tLatest=annTurn(latest), tPrev=prev?annTurn(prev):0;
+  // quarter = last 3 vs prior 3
+  const qCur=P.slice(n-3), qPrev=P.slice(n-6,n-3);
+  const tQCur=groupTurn(qCur), tQPrev=groupTurn(qPrev);
+  // YTD = months in latest calendar year; prior = same count one year earlier
+  const yr=latest.ym.slice(0,4);
+  const ytd=P.filter(p=>p.ym.slice(0,4)===yr);
+  const ytdStartIdx=P.indexOf(ytd[0]);
+  const ytdPrev=P.slice(Math.max(0,ytdStartIdx-12),ytdStartIdx-12+ytd.length).filter(Boolean);
+  const tYtd=groupTurn(ytd), tYtdPrev=groupTurn(ytdPrev);
+  // YoY = latest month vs 12 months earlier
+  const yoyBase=P[n-13];
+  const tYoY=yoyBase?annTurn(yoyBase):0;
+  const d=(a,b)=>b?((a-b)/b*100):0;
+  return {
+    latest,tLatest,dioLatest:dio(tLatest),
+    mom:{cur:tLatest,prev:tPrev,delta:d(tLatest,tPrev)},
+    qoq:{cur:tQCur,prev:tQPrev,delta:d(tQCur,tQPrev)},
+    ytd:{cur:tYtd,prev:tYtdPrev,delta:d(tYtd,tYtdPrev),n:ytd.length},
+    yoy:{cur:tLatest,prev:tYoY,delta:d(tLatest,tYoY)}
+  };
+}
+
+/* ---- tab bar -------------------------------------------------------------- */
+const TABS=[['recon','Reconciliation'],['gl','GL Transactions'],['liab','Liability'],
+  ['reserve','Reserves & Disposition'],['cost','Cost by Invoice & GL'],['prod','Product Costs'],
+  ['turn','Turnover'],['review','Review & Export']];
+function renderTabbar(){
+  const c=compute();
+  const pip={gl:state.txns.length,reserve:state.eoItems.length,cost:state.invoices.length,prod:state.products.length,
+    review:state.exceptions.filter(e=>e.sev==='Open').length};
+  $('tabbar').innerHTML=TABS.map(([k,label])=>{
+    const p=pip[k]; const badge=p?`<span class="pip">${p}</span>`:'';
+    return `<button class="tab ${state.tab===k?'active':''}" onclick="go('${k}')">${label}${badge}</button>`;
+  }).join('');
+  $('periodBadge').textContent=`${state.period}`;
+  const reconciled=Math.abs(c.varBookPerp)<1;
+  $('statusBadge').className='badge '+(state.locked?'b-blue':reconciled?'b-green':'b-amber');
+  $('statusBadge').textContent=state.locked?'🔒 Period locked':reconciled?'✓ Reconciled':'⚠ Variance to clear';
+}
+function go(t){state.tab=t;render();window.scrollTo({top:0});}
+
+/* ---- RECONCILIATION tab --------------------------------------------------- */
+function tabRecon(){
+  const c=compute(); const ta=turnAnalytics();
+  const reconciled=Math.abs(c.varBookPerp)<1;
+  const tiles=[
+    ['GL inventory control',money(c.glInv),'1300 · derived from postings','📒','b-indigo'],
+    ['Perpetual subledger',money(c.perp),'system of record','🗂️','b-blue'],
+    ['Book ↔ perpetual',money(c.varBookPerp),Math.abs(c.varBookPerp)<1?'in balance':'unreconciled','⚖️',Math.abs(c.varBookPerp)<1?'b-green':'b-amber'],
+    ['GR/IR liability',money(c.grir),'2150 · received not invoiced','📥','b-violet'],
+    ['AP (inventory)',money(c.ap),'2100 · open payables','💳','b-gray'],
+    ['Annualized turnover',ta.tLatest.toFixed(2)+'×','DIO '+dio(ta.tLatest).toFixed(0)+' days','🔄','b-green']
+  ];
+  const rf=[
+    ['begin','',`Beginning inventory — ${esc(state.period.replace(/\\w+ /,'opening '))}`,c.OPEN.inventory],
+    ['add','+','Goods receipts (RNI)',c.B('receipt')],
+    ['add','+','Freight-in capitalized',c.B('freight')],
+    ['add','+','Customer returns to stock',c.B('cust_return')],
+    ['add','+','Cycle-count gains',c.B('count_gain')],
+    ['sub','−','Cost of goods sold',c.B('cogs')],
+    ['sub','−','Returns to vendor',c.B('vend_return')],
+    ['sub','−','Shrinkage / loss',c.B('shrinkage')],
+    ['sub','−','LCM / NRV write-downs',c.B('writedown')],
+    ['sub','−','Purchase price variance',c.B('ppv')],
+    ['end','=','Ending inventory per GL',c.glInv]
+  ];
+  return `
+  <section class="block">
+    <div class="grid g6">${tiles.map(t=>tile(...t)).join('')}</div>
+  </section>
+
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Full cycle</span><h2>Inventory roll-forward</h2></div>
+      <div class="rf">
+        ${rf.map(r=>`<div class="rfrow ${r[0]}"><div class="lab"><span class="sgn">${r[1]}</span><span>${esc(r[2])}</span></div><div class="val">${money(r[3])}</div></div>`).join('')}
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:10px">Every line is derived from the GL Transactions register — edit a posting there and the cycle re-ties automatically.</p>
+    </div>
+
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Tie-out</span><h2>Subledger → GL → physical</h2></div>
+      <div class="kvs">
+        <div class="k">Ending inventory per GL (1300)</div><div class="v">${money(c.glInv)}</div>
+        <div class="k">Perpetual subledger ending</div>
+        <div class="v"><input class="inline-edit" type="number" value="${c.perp}" onchange="setNum('perpetualEnding',this.value)"></div>
+        <div class="k">Variance — book vs perpetual</div><div class="v" style="color:${Math.abs(c.varBookPerp)<1?'var(--green)':'var(--amber)'}">${money(c.varBookPerp)}</div>
+        <div class="k">Physical count</div>
+        <div class="v"><input class="inline-edit" type="number" value="${c.phys}" onchange="setNum('physicalCount',this.value)"></div>
+        <div class="k">Variance — perpetual vs physical</div><div class="v" style="color:${Math.abs(c.varPerpPhys)<1?'var(--green)':'var(--red)'}">${money(c.varPerpPhys)}</div>
+        <div class="k">Net unreconciled — GL vs physical</div><div class="v" style="color:${Math.abs(c.varBookPhys)<1?'var(--green)':'var(--red)'}">${money(c.varBookPhys)}</div>
+      </div>
+      <div class="snap"><span class="dot" style="background:${reconciled?'var(--green)':'var(--amber)'}"></span>
+        <span><b>${reconciled?'Control account ties to the subledger.':'Book-to-perpetual variance of '+money(c.varBookPerp)+' to investigate.'}</b>
+        ${Math.abs(c.varPerpPhys)>=1?' Physical count is off the perpetual by '+money(c.varPerpPhys)+' — a count adjustment is needed.':''}</span></div>
+      <div class="section-head" style="margin-top:18px"><span class="eyebrow">Opening balances</span></div>
+      <div class="form-grid">
+        ${openField('Inventory (1300)','openInventory',state.openInventory)}
+        ${openField('GR/IR (2150)','openGRIR',state.openGRIR)}
+        ${openField('AP (2100)','openAP',state.openAP)}
+      </div>
+    </div>
+  </section>
+
+  <div class="disclaimer tight">⚠️ Reconciliation support only. Figures are computed from the postings and balances you enter; confirm against your ERP / GL before close.</div>`;
+}
+function openField(label,key,val){
+  return `<div class="field"><label>${label}</label><input type="number" value="${val}" onchange="setNum('${key}',this.value)"></div>`;
+}
+function tile(lbl,big,sub,ic,badge){
+  return `<div class="tile"><div class="top"><span class="lbl">${esc(lbl)}</span><span class="ic">${ic}</span></div>
+    <div class="big mono">${big}</div><div><span class="badge ${badge}">${esc(sub)}</span></div></div>`;
+}
+
+/* ---- GL TRANSACTIONS tab -------------------------------------------------- */
+function tabGL(){
+  const rows=state.txns.slice().sort((a,b)=>a.date<b.date?-1:1).map(t=>{
+    const def=TXN_TYPES[t.type]||{label:t.type,dr:'',cr:''};
+    return `<tr>
+      <td class="mono">${esc(t.date)}</td>
+      <td class="mono">${esc(t.ref)}</td>
+      <td>${esc(def.label)}</td>
+      <td>${esc(t.product)}</td>
+      <td><span class="gl-tag">Dr ${ACC[def.dr]?ACC[def.dr].code:''}</span> <span class="gl-tag">Cr ${ACC[def.cr]?ACC[def.cr].code:''}</span></td>
+      <td class="num mono">${money(t.amount)}</td>
+      <td><button class="btn-danger btn-xs" onclick="delTxn('${t.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+  const total=state.txns.reduce((s,t)=>s+(+t.amount||0),0);
+  const opts=Object.entries(TXN_TYPES).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('');
+  return `
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Journal register</span><h2>Standard inventory &amp; liability postings</h2></div>
+    <div class="tbl-wrap">
+      <table class="tbl" style="min-width:760px">
+        <thead><tr><th>Date</th><th>Ref</th><th>Type (double entry)</th><th>Product / memo</th><th>Accounts</th><th class="num">Amount</th><th></th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="7" class="muted" style="text-align:center">No transactions.</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="5">Posted activity (${state.txns.length} entries)</td><td class="num mono">${money(total)}</td><td></td></tr></tfoot>
+      </table>
+    </div>
+  </section>
+  <section class="block card pad">
+    <div class="section-head"><span class="eyebrow">Add posting</span><h2>New transaction</h2></div>
+    <div class="form-grid">
+      <div class="field"><label>Date</label><input id="nt_date" type="date" value="2026-05-31"></div>
+      <div class="field"><label>Reference</label><input id="nt_ref" placeholder="GR-/VCH-/SO-"></div>
+      <div class="field" style="grid-column:span 2"><label>Type</label><select id="nt_type">${opts}</select></div>
+      <div class="field"><label>Amount</label><input id="nt_amt" type="number" placeholder="0"></div>
+      <div class="field" style="grid-column:1/-1"><label>Product / memo</label><input id="nt_prod" placeholder="SKU or description"></div>
+    </div>
+    <button class="btn-primary" onclick="addTxn()">+ Post transaction</button>
+    <p class="muted" style="font-size:12px;margin-top:8px">Posting type sets the debit/credit accounts and how the entry flows through the roll-forward and liability tie-outs.</p>
+  </section>`;
+}
+
+/* ---- LIABILITY tab -------------------------------------------------------- */
+function tabLiab(){
+  const c=compute();
+  const grirOpen=c.OPEN.grir, grirRecv=c.B('receipt'), grirVouch=c.B('voucher'), grirEnd=c.grir;
+  const apOpen=c.OPEN.ap, apVouch=c.B('voucher'), apFreight=c.B('freight'), apPay=c.B('payment'), apVret=c.B('vend_return'), apEnd=c.ap;
+  // GR/IR ageing (illustrative split of ending balance)
+  const ageing=[['0–30 days',0.62],['31–60 days',0.24],['61–90 days',0.09],['90+ days',0.05]]
+    .map(([b,w])=>[b,Math.round(grirEnd*w)]);
+  return `
+  <section class="block grid g3">
+    ${tile('GR/IR clearing',money(grirEnd),'received not invoiced','📥','b-violet')}
+    ${tile('AP — inventory',money(apEnd),'open vendor payables','💳','b-blue')}
+    ${tile('90+ day GR/IR',money(ageing[3][1]),'aged — needs follow-up','⏳',ageing[3][1]>0?'b-amber':'b-green')}
+  </section>
+
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">2150 clearing</span><h2>GR/IR — goods received, not invoiced</h2></div>
+      <div class="rf">
+        <div class="rfrow begin"><div class="lab"><span class="sgn"></span>Opening GR/IR</div><div class="val">${money(grirOpen)}</div></div>
+        <div class="rfrow add"><div class="lab"><span class="sgn">+</span>Goods receipts (RNI)</div><div class="val">${money(grirRecv)}</div></div>
+        <div class="rfrow sub"><div class="lab"><span class="sgn">−</span>Invoices vouchered to AP</div><div class="val">${money(grirVouch)}</div></div>
+        <div class="rfrow end"><div class="lab"><span class="sgn">=</span>Ending GR/IR (uninvoiced)</div><div class="val">${money(grirEnd)}</div></div>
+      </div>
+      <div class="section-head" style="margin-top:16px"><span class="eyebrow">Ageing</span></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Bucket</th><th class="num">Balance</th><th class="num">Share</th></tr></thead>
+        <tbody>${ageing.map(([b,v])=>`<tr><td>${b}</td><td class="num mono">${money(v)}</td><td class="num mono">${grirEnd?Math.round(v/grirEnd*100):0}%</td></tr>`).join('')}</tbody></table></div>
+    </div>
+
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">2100 payables</span><h2>Accounts payable — inventory</h2></div>
+      <div class="rf">
+        <div class="rfrow begin"><div class="lab"><span class="sgn"></span>Opening AP</div><div class="val">${money(apOpen)}</div></div>
+        <div class="rfrow add"><div class="lab"><span class="sgn">+</span>Invoices vouchered</div><div class="val">${money(apVouch)}</div></div>
+        <div class="rfrow add"><div class="lab"><span class="sgn">+</span>Freight invoices</div><div class="val">${money(apFreight)}</div></div>
+        <div class="rfrow sub"><div class="lab"><span class="sgn">−</span>Returns to vendor</div><div class="val">${money(apVret)}</div></div>
+        <div class="rfrow sub"><div class="lab"><span class="sgn">−</span>Payments to vendors</div><div class="val">${money(apPay)}</div></div>
+        <div class="rfrow end"><div class="lab"><span class="sgn">=</span>Ending AP</div><div class="val">${money(apEnd)}</div></div>
+      </div>
+      <div class="snap"><span class="dot" style="background:var(--violet)"></span>
+        <span><b>Three-way match.</b> Receipts raise GR/IR; vouchering clears GR/IR into AP; payment settles AP. Uninvoiced receipts of ${money(grirEnd)} remain accrued in GR/IR.</span></div>
+    </div>
+  </section>
+  <div class="disclaimer tight">⚠️ Liability balances are derived from the postings in the GL Transactions tab. Ageing buckets are illustrative until receipt-level dates are imported.</div>`;
+}
+
+/* ---- RESERVES & DISPOSITION tab ------------------------------------------- */
+function eoBand(days){return RESERVE_POLICY.find(b=>days<=b.max);}
+function computeReserve(){
+  const items=state.eoItems.map(it=>{
+    const val=(+it.onHand||0)*(+it.unitCost||0);
+    const b=eoBand(+it.lastDays||0);
+    return {...it,val,band:b.band,pct:b.pct,res:val*b.pct/100};
+  });
+  const eoVal=items.reduce((s,i)=>s+i.val,0);
+  const required=items.reduce((s,i)=>s+i.res,0);
+  const scrap$=state.scrap.reduce((s,x)=>s+(+x.qty||0)*(+x.unitCost||0),0);
+  const ending=(+state.reserveOpening||0)+(+state.reserveProvision||0)-scrap$-(+state.reserveReversal||0);
+  const coverage=required?ending/required*100:0;
+  const disp={'Repair & reuse':{u:0,v:0},'Restock':{u:0,v:0},'Scrap':{u:0,v:0}};
+  state.returns.forEach(r=>{const d=disp[r.disposition]||(disp[r.disposition]={u:0,v:0});d.u+=(+r.qty||0);d.v+=(+r.qty||0)*(+r.unitCost||0);});
+  const retVal=Object.values(disp).reduce((s,d)=>s+d.v,0);
+  const retUnits=Object.values(disp).reduce((s,d)=>s+d.u,0);
+  const recovered=disp['Repair & reuse'].v+disp['Restock'].v;
+  return {items,eoVal,required,scrap$,ending,coverage,disp,retVal,retUnits,recovered,
+    reuseRate:retVal?recovered/retVal*100:0};
+}
+function tabReserve(){
+  const r=computeReserve(); const c=compute();
+  const reservePctOfInv=c.glInv?r.ending/c.glInv*100:0;
+  const bandColor=p=>p>=100?'b-red':p>=35?'b-amber':p>=10?'b-blue':'b-green';
+  const eoRows=r.items.slice().sort((a,b)=>b.res-a.res).map(it=>`<tr>
+    <td class="mono">${esc(it.sku)}</td>
+    <td>${esc(it.name)}<div class="muted" style="font-size:11px">${esc(it.reason)}</div></td>
+    <td class="num mono">${num(it.onHand)}</td>
+    <td class="num mono">${money(it.val)}</td>
+    <td class="num mono">${it.lastDays}d</td>
+    <td><span class="badge ${bandColor(it.pct)}">${esc(it.band)}</span></td>
+    <td class="num mono">${it.pct}%</td>
+    <td class="num mono"><b>${money(it.res)}</b></td></tr>`).join('');
+  const scrapRows=state.scrap.map(s=>`<tr>
+    <td class="mono">${esc(s.date)}</td><td class="mono">${esc(s.sku)}</td><td>${esc(s.name)}</td>
+    <td class="num mono">${num(s.qty)}</td><td class="num mono">${money((+s.qty||0)*(+s.unitCost||0))}</td>
+    <td>${esc(s.reason)}</td><td><button class="btn-danger btn-xs" onclick="delScrap('${s.id}')">✕</button></td></tr>`).join('')
+    ||'<tr><td colspan="7" class="muted" style="text-align:center">No scrap recorded.</td></tr>';
+  const retRows=state.returns.map(x=>{
+    const dc=x.disposition==='Scrap'?'b-red':x.disposition==='Repair & reuse'?'b-indigo':'b-green';
+    return `<tr><td class="mono">${esc(x.rma)}</td><td class="mono">${esc(x.date)}</td><td>${esc(x.name)}<div class="muted" style="font-size:11px">${esc(x.note)}</div></td>
+      <td class="num mono">${num(x.qty)}</td><td class="num mono">${money((+x.qty||0)*(+x.unitCost||0))}</td>
+      <td><span class="badge ${dc}">${esc(x.disposition)}</span></td><td><button class="btn-danger btn-xs" onclick="delReturn('${x.id}')">✕</button></td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="muted" style="text-align:center">No returns recorded.</td></tr>';
+  const dispCard=(label,key,ic,badge)=>{
+    const d=r.disp[key]||{u:0,v:0};
+    return `<div class="tile"><div class="top"><span class="lbl">${label}</span><span class="ic">${ic}</span></div>
+      <div class="big mono">${money(d.v)}</div><div><span class="badge ${badge}">${num(d.u)} units · ${r.retVal?Math.round(d.v/r.retVal*100):0}% of returns</span></div></div>`;
+  };
+  const policyChips=RESERVE_POLICY.map(b=>`<span class="badge ${bandColor(b.pct)}">${esc(b.band)} → ${b.pct}%</span>`).join(' ');
+  return `
+  <section class="block">
+    <div class="grid g6">
+      ${tile('E&O inventory at cost',money(r.eoVal),'excess / obsolete on hand','📦','b-amber')}
+      ${tile('Required reserve',money(r.required),'per policy','🛡️','b-red')}
+      ${tile('Reserve coverage',r.coverage.toFixed(0)+'%',Math.abs(r.ending-r.required)<1?'fully reserved':r.ending<r.required?'under-reserved':'over-reserved','⚖️',r.coverage>=100?'b-green':'b-amber')}
+      ${tile('Scrap this period',money(r.scrap$),num(state.scrap.length)+' scrap events','🗑️','b-gray')}
+      ${tile('Returns this period',num(r.retUnits)+' u',money(r.retVal)+' returned','↩️','b-blue')}
+      ${tile('Repair & reuse rate',r.reuseRate.toFixed(0)+'%','recovered vs scrapped','♻️',r.reuseRate>=50?'b-green':'b-amber')}
+    </div>
+  </section>
+
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Valuation</span><h2>Obsolescence reserve roll-forward</h2></div>
+      <div class="rf">
+        <div class="rfrow begin"><div class="lab"><span class="sgn"></span>Opening reserve</div><div class="val">${money(state.reserveOpening)}</div></div>
+        <div class="rfrow add"><div class="lab"><span class="sgn">+</span>Provision (charged to P&L)</div><div class="val"><input class="inline-edit" type="number" value="${state.reserveProvision}" onchange="setNum('reserveProvision',this.value)"></div></div>
+        <div class="rfrow sub"><div class="lab"><span class="sgn">−</span>Scrap written off against reserve</div><div class="val">${money(r.scrap$)}</div></div>
+        <div class="rfrow sub"><div class="lab"><span class="sgn">−</span>Reversal (recovered / sold-through)</div><div class="val"><input class="inline-edit" type="number" value="${state.reserveReversal}" onchange="setNum('reserveReversal',this.value)"></div></div>
+        <div class="rfrow end"><div class="lab"><span class="sgn">=</span>Ending reserve</div><div class="val">${money(r.ending)}</div></div>
+      </div>
+      <div class="kvs" style="margin-top:12px">
+        <div class="k">Required reserve (policy)</div><div class="v">${money(r.required)}</div>
+        <div class="k">Over / (under) reserved</div><div class="v" style="color:${r.ending>=r.required-1?'var(--green)':'var(--red)'}">${money(r.ending-r.required)}</div>
+        <div class="k">Reserve as % of GL inventory</div><div class="v">${reservePctOfInv.toFixed(1)}%</div>
+      </div>
+      <div class="snap"><span class="dot" style="background:${r.coverage>=100?'var(--green)':'var(--amber)'}"></span>
+        <span><b>${r.coverage>=100?'Reserve covers the policy requirement.':'Under-reserved by '+money(r.required-r.ending)+' — book additional provision.'}</b></span></div>
+      <div style="margin-top:12px"><div class="muted" style="font-size:11.5px;margin-bottom:6px">Reserve policy (days since last movement / expiry):</div><div class="badges">${policyChips}</div></div>
+    </div>
+
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Excess &amp; obsolete</span><h2>Obsolescence ageing &amp; reserve by SKU</h2></div>
+      <div class="tbl-wrap"><table class="tbl" style="min-width:560px">
+        <thead><tr><th>SKU</th><th>Item</th><th class="num">On hand</th><th class="num">At cost</th><th class="num">Idle</th><th>Band</th><th class="num">Rsv %</th><th class="num">Reserve</th></tr></thead>
+        <tbody>${eoRows}</tbody>
+        <tfoot><tr><td colspan="3">Total E&amp;O</td><td class="num mono">${money(r.eoVal)}</td><td colspan="3"></td><td class="num mono">${money(r.required)}</td></tr></tfoot>
+      </table></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Disposition</span><h2>Returns → repair &amp; reuse or scrap</h2></div>
+    <div class="grid g3" style="margin-bottom:14px">
+      ${dispCard('Repair &amp; reuse','Repair & reuse','♻️','b-indigo')}
+      ${dispCard('Restock (good)','Restock','✅','b-green')}
+      ${dispCard('Scrap','Scrap','🗑️','b-red')}
+    </div>
+    <div class="snap" style="margin-top:0"><span class="dot" style="background:var(--indigo)"></span>
+      <span><b>${money(r.recovered)} recovered</b> to inventory via repair/reuse &amp; restock vs <b>${money(r.disp['Scrap'].v)} scrapped</b> — a ${r.reuseRate.toFixed(0)}% value-recovery rate on returns.</span></div>
+    <div class="tbl-wrap" style="margin-top:12px"><table class="tbl" style="min-width:720px">
+      <thead><tr><th>RMA</th><th>Date</th><th>Item / disposition note</th><th class="num">Qty</th><th class="num">At cost</th><th>Disposition</th><th></th></tr></thead>
+      <tbody>${retRows}</tbody>
+    </table></div>
+  </section>
+
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Scrap log</span><h2>Scrap &amp; destruction</h2></div>
+      <div class="tbl-wrap"><table class="tbl" style="min-width:560px">
+        <thead><tr><th>Date</th><th>SKU</th><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th>Reason</th><th></th></tr></thead>
+        <tbody>${scrapRows}</tbody>
+        <tfoot><tr><td colspan="4">Total scrapped</td><td class="num mono">${money(r.scrap$)}</td><td colspan="2"></td></tr></tfoot>
+      </table></div>
+      <div class="form-grid" style="margin-top:12px">
+        <div class="field"><label>SKU</label><input id="sc_sku" placeholder="GB-100"></div>
+        <div class="field" style="grid-column:span 2"><label>Item</label><input id="sc_name" placeholder="Description / reason"></div>
+        <div class="field"><label>Qty</label><input id="sc_qty" type="number" placeholder="0"></div>
+        <div class="field"><label>Unit cost</label><input id="sc_cost" type="number" placeholder="0"></div>
+      </div>
+      <button class="btn-primary btn-xs" onclick="addScrap()">+ Record scrap</button>
+    </div>
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Log a return</span><h2>New RMA</h2></div>
+      <div class="form-grid">
+        <div class="field"><label>RMA #</label><input id="rt_rma" placeholder="RMA-3340"></div>
+        <div class="field"><label>SKU</label><input id="rt_sku" placeholder="INST-QPCR-2"></div>
+        <div class="field" style="grid-column:span 2"><label>Item</label><input id="rt_name" placeholder="Description"></div>
+        <div class="field"><label>Qty</label><input id="rt_qty" type="number" placeholder="0"></div>
+        <div class="field"><label>Unit cost</label><input id="rt_cost" type="number" placeholder="0"></div>
+        <div class="field" style="grid-column:span 2"><label>Disposition</label><select id="rt_disp"><option>Repair & reuse</option><option>Restock</option><option>Scrap</option></select></div>
+        <div class="field" style="grid-column:1/-1"><label>Note</label><input id="rt_note" placeholder="Triage / repair note"></div>
+      </div>
+      <button class="btn-primary btn-xs" onclick="addReturn()">+ Log return</button>
+    </div>
+  </section>
+  <div class="disclaimer tight">⚠️ Reserve, scrap &amp; disposition analysis only. Reserve percentages are a sample policy; align bands, provision and write-off treatment with your valuation policy and QA destruction controls before relying on them.</div>`;
+}
+
+/* ---- COST BY INVOICE & GL tab --------------------------------------------- */
+function tabCost(){
+  const v=state.costView||'invoice';
+  const seg=`<div class="seg"><button class="${v==='invoice'?'active':''}" onclick="setCostView('invoice')">By invoice</button><button class="${v==='gl'?'active':''}" onclick="setCostView('gl')">By GL account</button></div>`;
+  let body;
+  if(v==='invoice'){
+    body=state.invoices.map(iv=>{
+      const tot=iv.lines.reduce((s,l)=>s+lineAmt(l),0);
+      const lr=iv.lines.map(l=>`<tr><td class="mono">${esc(l.sku)}</td><td>${esc(l.desc)}</td><td class="num mono">${num(l.qty)}</td><td class="num mono">${money2(l.unitCost)}</td><td><span class="gl-tag">${esc(LINE_GL[l.gl]||l.gl)}</span></td><td class="num mono">${money(lineAmt(l))}</td></tr>`).join('');
+      return `<div class="card pad" style="margin-bottom:14px">
+        <div class="row-flex" style="justify-content:space-between;margin-bottom:10px">
+          <div><b>${esc(iv.inv)}</b> · ${esc(iv.vendor)} <span class="muted">· ${esc(iv.date)}</span></div>
+          <span class="badge b-indigo">${money(tot)}</span></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>SKU</th><th>Line</th><th class="num">Qty</th><th class="num">Unit cost</th><th>GL account</th><th class="num">Extended</th></tr></thead>
+          <tbody>${lr}</tbody>
+          <tfoot><tr><td colspan="5">Invoice total</td><td class="num mono">${money(tot)}</td></tr></tfoot></table></div>
+      </div>`;
+    }).join('');
+  }else{
+    const byGl={}; let grand=0;
+    state.invoices.forEach(iv=>iv.lines.forEach(l=>{const a=lineAmt(l);byGl[l.gl]=(byGl[l.gl]||0)+a;grand+=a;}));
+    const rows=Object.entries(byGl).sort((a,b)=>b[1]-a[1]).map(([gl,amt])=>{
+      const skus=new Set(); state.invoices.forEach(iv=>iv.lines.forEach(l=>{if(l.gl===gl)skus.add(l.sku);}));
+      return `<tr><td><span class="gl-tag">${esc(LINE_GL[gl]||gl)}</span></td><td>${esc(ACC[gl]?ACC[gl].name:gl)}</td><td class="num mono">${[...skus].length}</td><td class="num mono">${money(amt)}</td><td class="num mono">${grand?(amt/grand*100).toFixed(1):0}%</td></tr>`;
+    }).join('');
+    body=`<div class="tbl-wrap"><table class="tbl" style="min-width:640px"><thead><tr><th>GL</th><th>Account</th><th class="num">SKUs</th><th class="num">Cost posted</th><th class="num">Mix</th></tr></thead>
+      <tbody>${rows}</tbody><tfoot><tr><td colspan="3">Total invoiced cost</td><td class="num mono">${money(grand)}</td><td class="num mono">100%</td></tr></tfoot></table></div>
+      <p class="muted" style="font-size:12px;margin-top:10px">Same invoice lines, rolled up to the GL accounts they post to — the bridge from vendor invoices to the 1300 / 1310 / 5120 control accounts.</p>`;
+  }
+  const grandAll=state.invoices.reduce((s,iv)=>s+iv.lines.reduce((a,l)=>a+lineAmt(l),0),0);
+  return `
+  <section class="block">
+    <div class="section-head" style="justify-content:space-between"><div><span class="eyebrow">Product costing</span><h2>Cost by invoice &amp; by GL</h2></div>${seg}</div>
+    <div class="grid g3" style="margin-bottom:14px">
+      ${tile('Invoices costed',String(state.invoices.length),'this period','🧾','b-blue')}
+      ${tile('Total invoiced cost',money(grandAll),'across all GL accounts','Σ','b-indigo')}
+      ${tile('Distinct SKUs',String(new Set(state.invoices.flatMap(iv=>iv.lines.map(l=>l.sku))).size),'on invoices','#','b-violet')}
+    </div>
+    ${body}
+  </section>
+  <div class="disclaimer tight">⚠️ Invoiced cost ties product lines to GL accounts for the three-way match. Standard vs actual differences post to 5120 PPV — see the Product Costs tab for standard composition.</div>`;
+}
+function lineAmt(l){return (+l.qty||0)*(+l.unitCost||0);}
+function setCostView(v){state.costView=v;render();}
+
+/* ---- PRODUCT COSTS tab ---------------------------------------------------- */
+function tabProd(){
+  const rows=state.products.map((p,i)=>{
+    const std=p.variable+p.fixed+p.rd+p.overhead;
+    const mx=Math.max(...state.products.map(q=>q.variable+q.fixed+q.rd+q.overhead));
+    const w=k=>mx?Math.round((p[k]/mx)*100):0;
+    const margin=p.price?p.price-std:0, mpct=p.price?margin/p.price*100:0;
+    return `<tr>
+      <td class="mono">${esc(p.sku)}</td>
+      <td>${esc(p.name)}<div class="muted" style="font-size:11px">${esc(p.cat)}</div></td>
+      <td class="num mono">${money2(p.variable)}</td>
+      <td class="num mono">${money2(p.fixed)}</td>
+      <td class="num mono">${money2(p.rd)}</td>
+      <td class="num mono">${money2(p.overhead)}</td>
+      <td class="num mono"><b>${money2(std)}</b></td>
+      <td style="min-width:140px"><div class="coststack"><i class="cs-var" style="width:${w('variable')}%"></i><i class="cs-fix" style="width:${w('fixed')}%"></i><i class="cs-rd" style="width:${w('rd')}%"></i><i class="cs-oh" style="width:${w('overhead')}%"></i></div></td>
+      <td class="num mono">${p.price?money2(p.price):'—'}</td>
+      <td class="num mono" style="color:${margin>=0?'var(--green)':'var(--red)'}">${p.price?pctp(mpct):'—'}</td>
+    </tr>`;
+  }).join('');
+  const sums=state.products.reduce((a,p)=>{a.v+=p.variable;a.f+=p.fixed;a.r+=p.rd;a.o+=p.overhead;return a;},{v:0,f:0,r:0,o:0});
+  const stdTot=sums.v+sums.f+sums.r+sums.o;
+  const fgvar=state.products.filter(p=>p.price>0);
+  const avgMargin=fgvar.length?fgvar.reduce((s,p)=>{const std=p.variable+p.fixed+p.rd+p.overhead;return s+(p.price?(p.price-std)/p.price*100:0);},0)/fgvar.length:0;
+  return `
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Cost catalog</span><h2>Product standard cost — fixed, variable, R&amp;D &amp; overhead</h2></div>
+    <div class="grid g4" style="margin-bottom:14px">
+      ${tile('Variable share',(stdTot?Math.round(sums.v/stdTot*100):0)+'%',money2(sums.v)+' / unit (sum)','🟢','b-green')}
+      ${tile('Fixed share',(stdTot?Math.round(sums.f/stdTot*100):0)+'%',money2(sums.f)+' / unit (sum)','🔵','b-blue')}
+      ${tile('R&D share',(stdTot?Math.round(sums.r/stdTot*100):0)+'%',money2(sums.r)+' / unit (sum)','🟣','b-violet')}
+      ${tile('Avg margin',avgMargin.toFixed(1)+'%','priced SKUs','📈','b-indigo')}
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl" style="min-width:900px">
+        <thead><tr><th>SKU</th><th>Product</th><th class="num">Variable</th><th class="num">Fixed</th><th class="num">R&amp;D</th><th class="num">Overhead</th><th class="num">Std unit cost</th><th>Composition</th><th class="num">Price</th><th class="num">Margin</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="leg">
+      <span class="k"><span class="sw cs-var"></span>Variable (materials, direct labor)</span>
+      <span class="k"><span class="sw cs-fix"></span>Fixed (tooling, allocated capacity)</span>
+      <span class="k"><span class="sw cs-rd"></span>R&amp;D (amortized development)</span>
+      <span class="k"><span class="sw cs-oh"></span>Overhead (indirect / burden)</span>
+    </div>
+  </section>
+  <section class="block card pad">
+    <div class="section-head"><span class="eyebrow">Add product</span><h2>New SKU</h2></div>
+    <div class="form-grid">
+      <div class="field"><label>SKU</label><input id="np_sku" placeholder="FG-1005"></div>
+      <div class="field" style="grid-column:span 2"><label>Name</label><input id="np_name" placeholder="Product name"></div>
+      <div class="field"><label>Category</label><select id="np_cat"><option>Gel beads</option><option>Instrument</option><option>Subassembly</option><option>Raw material</option></select></div>
+      <div class="field"><label>Price</label><input id="np_price" type="number" placeholder="0"></div>
+      <div class="field"><label>Variable</label><input id="np_var" type="number" placeholder="0"></div>
+      <div class="field"><label>Fixed</label><input id="np_fix" type="number" placeholder="0"></div>
+      <div class="field"><label>R&amp;D</label><input id="np_rd" type="number" placeholder="0"></div>
+      <div class="field"><label>Overhead</label><input id="np_oh" type="number" placeholder="0"></div>
+    </div>
+    <button class="btn-primary" onclick="addProduct()">+ Add product</button>
+  </section>
+  <div class="disclaimer tight">⚠️ Standard cost composition is for analysis and is not a substitute for your cost-accounting system's bill of materials or overhead absorption.</div>`;
+}
+function pctp(n){return (n>=0?'':'-')+Math.abs(n).toFixed(1)+'%';}
+
+/* ---- TURNOVER tab --------------------------------------------------------- */
+function tabTurn(){
+  const ta=turnAnalytics();
+  const cmp=(o,label,note)=>{
+    const dir=o.delta>0.05?'up':o.delta<-0.05?'down':'flat';
+    const arrow=dir==='up'?'▲':dir==='down'?'▼':'■';
+    return `<div class="tile"><div class="top"><span class="lbl">${label}</span><span class="ic">🔄</span></div>
+      <div class="big mono">${o.cur.toFixed(2)}×</div>
+      <div><span class="delta ${dir}">${arrow} ${pct(o.delta)}</span> <span class="muted" style="font-size:11.5px">vs ${o.prev.toFixed(2)}×</span></div>
+      <div class="muted" style="font-size:11px">${note}</div></div>`;
+  };
+  return `
+  <section class="block grid g2">
+    ${tile('Annualized turnover',ta.tLatest.toFixed(2)+'×',state.periods[state.periods.length-1].ym+' · COGS ÷ avg inventory','🔄','b-green')}
+    ${tile('Days inventory outstanding',dio(ta.tLatest).toFixed(0)+' days','365 ÷ turnover','📆','b-blue')}
+  </section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Period-over-period</span><h2>Turnover momentum</h2></div>
+    <div class="grid g4">
+      ${cmp(ta.mom,'MoM','latest month vs prior month')}
+      ${cmp(ta.qoq,'QoQ','last 3 months vs prior 3')}
+      ${cmp(ta.ytd,'YTD',ta.ytd.n+' mo this year vs same last year')}
+      ${cmp(ta.yoy,'YoY','this month vs same month last year')}
+    </div>
+  </section>
+  <section class="block card chart-card">
+    <div class="section-head"><span class="eyebrow">24-month trend</span><h2>COGS &amp; annualized turnover</h2></div>
+    <div class="chart-wrap">${trendChart(state.periods)}</div>
+    <div class="chart-legend"><span class="k"><span class="bar"></span>Monthly COGS (left)</span><span class="k"><span class="ln"></span>Annualized turnover (right)</span></div>
+  </section>
+  <section class="block">
+    <div class="section-head"><span class="eyebrow">Detail</span><h2>Monthly turnover &amp; DIO</h2></div>
+    <div class="tbl-wrap"><table class="tbl" style="min-width:680px">
+      <thead><tr><th>Month</th><th class="num">Beg inv</th><th class="num">End inv</th><th class="num">Avg inv</th><th class="num">COGS</th><th class="num">Turnover (ann.)</th><th class="num">DIO</th></tr></thead>
+      <tbody>${state.periods.slice().reverse().map(p=>{const t=annTurn(p);return `<tr><td class="mono">${p.ym}</td><td class="num mono">${money(p.beg)}</td><td class="num mono">${money(p.end)}</td><td class="num mono">${money(avgInv(p))}</td><td class="num mono">${money(p.cogs)}</td><td class="num mono">${t.toFixed(2)}×</td><td class="num mono">${dio(t).toFixed(0)}</td></tr>`;}).join('')}</tbody>
+    </table></div>
+  </section>
+  <div class="disclaimer tight">⚠️ Turnover annualizes the period's COGS over average inventory. Method and day-count basis should match your reporting policy before use in disclosures.</div>`;
+}
+function trendChart(P){
+  const W=920,H=320,mL=64,mR=52,mT=18,mB=42, pw=W-mL-mR, ph=H-mT-mB;
+  const n=P.length;
+  const maxC=Math.max(...P.map(p=>p.cogs))*1.1;
+  const turns=P.map(annTurn); const maxT=Math.max(...turns)*1.15, minT=Math.min(...turns)*0.85;
+  const bw=pw/n*0.62;
+  const x=i=>mL+ (i+0.5)*(pw/n);
+  const yC=v=>mT+ph-(v/maxC)*ph;
+  const yT=v=>mT+ph-((v-minT)/(maxT-minT||1))*ph;
+  let bars='',line='',dots='',xlab='',yax='',y2='';
+  P.forEach((p,i)=>{ const h=(p.cogs/maxC)*ph; bars+=`<rect x="${x(i)-bw/2}" y="${mT+ph-h}" width="${bw}" height="${h}" rx="2" fill="rgba(0,200,5,.18)" stroke="rgba(0,200,5,.45)"></rect>`; });
+  turns.forEach((t,i)=>{ const px=x(i),py=yT(t); line+=(i===0?'M':'L')+px+' '+py+' '; dots+=`<circle cx="${px}" cy="${py}" r="2.4" fill="#d2a23a"></circle>`; });
+  P.forEach((p,i)=>{ if(i%3===0||i===n-1){ xlab+=`<text x="${x(i)}" y="${H-14}" text-anchor="middle" font-size="10" fill="#a8a59e">${p.ym.slice(2)}</text>`; }});
+  for(let g=0;g<=4;g++){ const v=maxC*g/4, yy=yC(v); yax+=`<line x1="${mL}" y1="${yy}" x2="${W-mR}" y2="${yy}" stroke="rgba(255,255,255,.07)"></line><text x="${mL-8}" y="${yy+3}" text-anchor="end" font-size="10" fill="#a8a59e">$${Math.round(v/1000)}k</text>`; }
+  for(let g=0;g<=4;g++){ const v=minT+(maxT-minT)*g/4, yy=yT(v); y2+=`<text x="${W-mR+8}" y="${yy+3}" text-anchor="start" font-size="10" fill="#d2a23a">${v.toFixed(1)}×</text>`; }
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="COGS bars and turnover line over 24 months">
+    ${yax}${bars}${y2}<path d="${line}" fill="none" stroke="#d2a23a" stroke-width="2"></path>${dots}${xlab}</svg>`;
+}
+
+/* ---- REVIEW & EXPORT tab -------------------------------------------------- */
+function tabReview(){
+  const c=compute();
+  const so=state.signoff;
+  const roleCard=(role,key)=>{
+    const v=so[key];
+    return `<div class="so ${v?'signed':''}"><div class="role">${role}</div>
+      ${v?`<div class="who">${esc(v.name)}</div><div class="when">signed ${esc(v.when)}</div>`
+         :`<div class="row-flex" style="margin-top:6px"><input id="so_${key}" class="inline-edit" style="width:auto;flex:1;text-align:left" placeholder="Name"><button class="btn-soft btn-xs" onclick="sign('${key}')">Sign</button></div>`}
+    </div>`;
+  };
+  const segDut=(()=>{
+    const p=so.preparer&&so.reviewer&&so.preparer.name.trim().toLowerCase()===so.reviewer.name.trim().toLowerCase();
+    return p?`<div class="snap"><span class="dot" style="background:var(--red)"></span><span><b>Segregation of duties flag.</b> Preparer and reviewer are the same person.</span></div>`:'';
+  })();
+  const exRows=state.exceptions.map(e=>`<div class="logrow"><span class="when mono">${esc(e.when)}</span><span class="badge ${e.sev==='Open'?'b-amber':'b-green'}" style="flex:none">${esc(e.sev)}</span><span style="flex:1">${esc(e.text)}</span><button class="btn-danger btn-xs" onclick="delExc('${e.id}')">✕</button></div>`).join('')||'<div class="empty">No exceptions logged.</div>';
+  return `
+  <section class="block grid g2" style="align-items:start">
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Exceptions</span><h2>Variance &amp; issue log</h2></div>
+      ${exRows}
+      <div class="row-flex" style="margin-top:12px">
+        <input id="ex_text" class="inline-edit" style="width:auto;flex:1;text-align:left" placeholder="Describe a variance or issue…">
+        <button class="btn-primary btn-xs" onclick="addExc()">+ Log</button>
+      </div>
+    </div>
+    <div class="card pad">
+      <div class="section-head"><span class="eyebrow">Approvals</span><h2>Sign-off &amp; period lock</h2></div>
+      <div class="signoff">${roleCard('Preparer','preparer')}${roleCard('Reviewer','reviewer')}${roleCard('Approver','approver')}</div>
+      ${segDut}
+      <div class="lock-note">Locking marks the reconciliation as final for ${esc(state.period)} (reversible in this preview).</div>
+      <div class="row-flex" style="margin-top:10px">
+        <button class="${state.locked?'btn-ghost':'btn-primary'}" onclick="toggleLock()">${state.locked?'🔓 Unlock period':'🔒 Lock period'}</button>
+        <span class="badge ${Math.abs(c.varBookPerp)<1?'b-green':'b-amber'}">${Math.abs(c.varBookPerp)<1?'Ties out':'Variance '+money(c.varBookPerp)}</span>
+      </div>
+    </div>
+  </section>
+  <section class="block card pad">
+    <div class="section-head"><span class="eyebrow">Export</span><h2>Download the reconciliation</h2></div>
+    <div class="grid g2">
+      <div class="exp"><div class="ic">📄</div><div class="meta"><div class="t">Reconciliation pack (CSV)</div><div class="d">Roll-forward, tie-out, liability &amp; turnover</div></div><button class="btn-soft btn-xs" onclick="exportCSV()">Download</button></div>
+      <div class="exp"><div class="ic">📝</div><div class="meta"><div class="t">Close memo (Markdown)</div><div class="d">Narrative summary for the file</div></div><button class="btn-soft btn-xs" onclick="exportMD()">Download</button></div>
+    </div>
+  </section>`;
+}
+
+/* ---- actions -------------------------------------------------------------- */
+function setNum(key,val){state[key]=parseFloat(val)||0;render();}
+function addTxn(){
+  const t=$('nt_type').value, amt=parseFloat($('nt_amt').value)||0;
+  if(!amt){alert('Enter an amount.');return;}
+  state.txns.push({id:id(),date:$('nt_date').value||'2026-05-31',ref:$('nt_ref').value||'—',type:t,product:$('nt_prod').value||TXN_TYPES[t].label,qty:1,amount:amt,loc:''});
+  render();
+}
+function delTxn(i){state.txns=state.txns.filter(t=>t.id!==i);render();}
+function addProduct(){
+  const sku=$('np_sku').value.trim(); if(!sku){alert('Enter a SKU.');return;}
+  state.products.push({sku,name:$('np_name').value||sku,cat:$('np_cat').value,
+    variable:+$('np_var').value||0,fixed:+$('np_fix').value||0,rd:+$('np_rd').value||0,overhead:+$('np_oh').value||0,price:+$('np_price').value||0});
+  render();
+}
+function addScrap(){const sku=$('sc_sku').value.trim();const qty=+$('sc_qty').value||0;const cost=+$('sc_cost').value||0;
+  if(!sku||!qty){alert('Enter a SKU and quantity.');return;}
+  state.scrap.push({id:id(),date:'2026-05-31',sku,name:$('sc_name').value||sku,qty,unitCost:cost,reason:$('sc_name').value||'Scrap'});render();}
+function delScrap(i){state.scrap=state.scrap.filter(s=>s.id!==i);render();}
+function addReturn(){const sku=$('rt_sku').value.trim();const qty=+$('rt_qty').value||0;
+  if(!sku||!qty){alert('Enter a SKU and quantity.');return;}
+  state.returns.push({id:id(),rma:$('rt_rma').value||'RMA-—',date:'2026-05-31',sku,name:$('rt_name').value||sku,qty,unitCost:+$('rt_cost').value||0,disposition:$('rt_disp').value,note:$('rt_note').value||''});render();}
+function delReturn(i){state.returns=state.returns.filter(x=>x.id!==i);render();}
+function addExc(){const t=$('ex_text').value.trim();if(!t)return;state.exceptions.unshift({id:id(),when:'2026-05-31',sev:'Open',text:t});render();}
+function delExc(i){state.exceptions=state.exceptions.filter(e=>e.id!==i);render();}
+function sign(key){const v=($('so_'+key).value||'').trim();if(!v){alert('Enter a name.');return;}state.signoff[key]={name:v,when:'2026-05-31'};render();}
+function toggleLock(){state.locked=!state.locked;render();}
+
+function download(name,text,mime){
+  const b=new Blob([text],{type:mime}); const u=URL.createObjectURL(b);
+  const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);
+}
+function exportCSV(){
+  const c=compute(),ta=turnAnalytics();
+  const L=[];
+  L.push('Inventory Reconciliation,'+state.company+','+state.period);
+  L.push('');L.push('ROLL-FORWARD,Amount');
+  L.push('Beginning inventory,'+c.OPEN.inventory);
+  [['Goods receipts','receipt'],['Freight-in','freight'],['Customer returns','cust_return'],['Count gains','count_gain'],['COGS','cogs'],['Vendor returns','vend_return'],['Shrinkage','shrinkage'],['Write-downs','writedown'],['PPV','ppv']].forEach(([n,k])=>L.push(n+','+c.B(k)));
+  L.push('Ending inventory per GL,'+c.glInv);
+  L.push('');L.push('TIE-OUT,Amount');
+  L.push('Perpetual subledger,'+c.perp);L.push('Book vs perpetual,'+c.varBookPerp);
+  L.push('Physical count,'+c.phys);L.push('Perpetual vs physical,'+c.varPerpPhys);
+  L.push('');L.push('LIABILITY,Amount');
+  L.push('GR/IR clearing (RNI),'+c.grir);L.push('Accounts payable,'+c.ap);
+  const rv=computeReserve();
+  L.push('');L.push('RESERVE / OBSOLESCENCE,Amount');
+  L.push('E&O inventory at cost,'+Math.round(rv.eoVal));
+  L.push('Required reserve (policy),'+Math.round(rv.required));
+  L.push('Ending reserve,'+Math.round(rv.ending));
+  L.push('Over/(under) reserved,'+Math.round(rv.ending-rv.required));
+  L.push('Scrap this period,'+Math.round(rv.scrap$));
+  L.push('Returns recovered (repair/reuse+restock),'+Math.round(rv.recovered));
+  L.push('Returns scrapped,'+Math.round(rv.disp['Scrap'].v));
+  L.push('Repair & reuse rate %,'+rv.reuseRate.toFixed(1));
+  L.push('');L.push('TURNOVER,Value');
+  L.push('Annualized turnover,'+ta.tLatest.toFixed(2));L.push('DIO,'+dio(ta.tLatest).toFixed(0));
+  L.push('MoM %,'+ta.mom.delta.toFixed(1));L.push('QoQ %,'+ta.qoq.delta.toFixed(1));
+  L.push('YTD %,'+ta.ytd.delta.toFixed(1));L.push('YoY %,'+ta.yoy.delta.toFixed(1));
+  download('inventory-reconciliation.csv',L.join('\n'),'text/csv');
+}
+function exportMD(){
+  const c=compute(),ta=turnAnalytics(),rv=computeReserve();
+  const m=`# Inventory Reconciliation — ${state.company}
+**Period:** ${state.period}  ·  **Status:** ${Math.abs(c.varBookPerp)<1?'Reconciled':'Variance to clear'}
+
+## Full-cycle roll-forward
+- Beginning inventory: ${money(c.OPEN.inventory)}
+- + Receipts ${money(c.B('receipt'))} · + Freight ${money(c.B('freight'))} · + Customer returns ${money(c.B('cust_return'))} · + Count gains ${money(c.B('count_gain'))}
+- − COGS ${money(c.B('cogs'))} · − Vendor returns ${money(c.B('vend_return'))} · − Shrinkage ${money(c.B('shrinkage'))} · − Write-downs ${money(c.B('writedown'))} · − PPV ${money(c.B('ppv'))}
+- **Ending inventory per GL: ${money(c.glInv)}**
+
+## Tie-out
+- Perpetual subledger: ${money(c.perp)} (book vs perpetual ${money(c.varBookPerp)})
+- Physical count: ${money(c.phys)} (perpetual vs physical ${money(c.varPerpPhys)})
+
+## Liability
+- GR/IR clearing (received not invoiced): ${money(c.grir)}
+- Accounts payable: ${money(c.ap)}
+
+## Reserves, scrap & returns
+- E&O inventory at cost: ${money(rv.eoVal)} · required reserve ${money(rv.required)} · ending reserve ${money(rv.ending)} (${rv.coverage.toFixed(0)}% coverage)
+- Scrap this period: ${money(rv.scrap$)}
+- Returns: ${money(rv.recovered)} recovered via repair/reuse + restock vs ${money(rv.disp['Scrap'].v)} scrapped (${rv.reuseRate.toFixed(0)}% recovery)
+
+## Inventory turnover
+- Annualized turnover: **${ta.tLatest.toFixed(2)}×**, DIO ${dio(ta.tLatest).toFixed(0)} days
+- MoM ${pct(ta.mom.delta)} · QoQ ${pct(ta.qoq.delta)} · YTD ${pct(ta.ytd.delta)} · YoY ${pct(ta.yoy.delta)}
+
+## Open exceptions
+${state.exceptions.filter(e=>e.sev==='Open').map(e=>'- '+e.text).join('\n')||'- None'}
+
+_Workflow & analysis only — not accounting, tax, or audit advice._`;
+  download('inventory-reconciliation-memo.md',m,'text/markdown');
+}
+
+/* ---- main render ---------------------------------------------------------- */
+const VIEWS={recon:tabRecon,gl:tabGL,liab:tabLiab,reserve:tabReserve,cost:tabCost,prod:tabProd,turn:tabTurn,review:tabReview};
+function render(){ renderTabbar(); $('view').innerHTML=(VIEWS[state.tab]||tabRecon)(); save(); }
+render();
+</script>
+</body>
+</html>
