@@ -147,6 +147,15 @@
   .rf-legend{font-size:11.5px;color:var(--rf);background:var(--rf-soft);border:1px solid var(--rf-line);border-radius:8px;padding:6px 11px;display:inline-flex;gap:7px;align-items:center;margin-bottom:12px}
   .rf-legend .sw{width:11px;height:11px;border-radius:3px;background:var(--rf);display:inline-block;flex:none}
   .rf-chip{font-size:10px;font-weight:700;color:var(--rf);background:var(--rf-soft);border:1px solid var(--rf-line);border-radius:6px;padding:1px 7px;white-space:nowrap}
+  /* "Ties to roll-forward" panel shown on each contributing tab */
+  .rftie{border-color:var(--rf-line);background:linear-gradient(180deg,var(--rf-soft),transparent)}
+  .rftie-head{display:flex;align-items:center;gap:9px;margin-bottom:8px;font-size:14.5px;flex-wrap:wrap}
+  .rftie-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 2px;border-bottom:1px dashed var(--line);font-size:14px}
+  .rftie-row .rftie-lab{display:flex;align-items:center;gap:8px;color:var(--ink);min-width:0}
+  .rftie-row .sgn{font-weight:800;width:14px;text-align:center;flex:none}
+  .rftie-row .sgn.pos{color:var(--green)} .rftie-row .sgn.neg{color:var(--red)}
+  .rftie-row .val,.rftie-row .mono{white-space:nowrap;flex:none}
+  .rftie-total{border-bottom:0;border-top:2px solid var(--rf-line);margin-top:3px;padding-top:11px;font-weight:740}
   .rf .rfrow .gl-tag{font-size:10px;padding:1px 6px}
   .rf .rfrow.begin .gl-tag,.rf .rfrow.end .gl-tag{font-size:10.5px}
   .rf .rfrow.expandable{cursor:pointer;user-select:none}
@@ -752,6 +761,41 @@ function renderTabbar(){
 }
 function go(t){state.tab=t;render();window.scrollTo({top:0});}
 
+/* Single source of truth for the roll-forward movement lines (journal + service).
+   Drives both the roll-forward and each tab's "ties to roll-forward" panel. */
+function rfMovements(c){
+  return [
+    {sign:1,  label:'Goods receipts (RNI)',                       amount:c.B('receipt'),     type:'receipt',     tab:'receiving'},
+    {sign:1,  label:'Freight-in capitalized',                     amount:c.B('freight'),     type:'freight',     tab:'receiving'},
+    {sign:1,  label:'Customer returns to stock',                  amount:c.B('cust_return'), type:'cust_return', tab:'reserve'},
+    {sign:1,  label:'Cycle-count gains',                          amount:c.B('count_gain'),  type:'count_gain',  tab:'cycle'},
+    {sign:-1, label:'Cost of goods sold',                         amount:c.B('cogs'),        type:'cogs',        tab:'ship'},
+    {sign:-1, label:'Returns to vendor',                          amount:c.B('vend_return'), type:'vend_return', tab:'receiving'},
+    {sign:-1, label:'Shrinkage / loss',                           amount:c.B('shrinkage'),   type:'shrinkage',   tab:'cycle'},
+    {sign:-1, label:'LCM / NRV write-downs',                      amount:c.B('writedown'),   type:'writedown',   tab:'reserve'},
+    {sign:-1, label:'Purchase price variance',                    amount:c.B('ppv'),         type:'ppv',         tab:'cost'},
+    {sign:1,  label:'Goods in transit — owned (vendor/customer)', amount:c.itOwned,     gl:'inventory', tab:'intransit'},
+    {sign:1,  label:'Repaired units returned to stock',           amount:c.repairReuse, gl:'inventory', tab:'repair'},
+    {sign:1,  label:'Warranty returns to stock',                  amount:c.warrantyIn,  gl:'inventory', tab:'warranty'},
+    {sign:-1, label:'Internal usage & samples',                   amount:c.internalUse, gl:'cogs',      tab:'transfers'},
+    {sign:-1, label:'Warranty replacements shipped',              amount:c.warrantyOut, gl:'cogs',      tab:'warranty'}
+  ];
+}
+// Teal "ties to roll-forward" panel for any tab a roll-forward line points to
+function rfTiePanel(tabKey){
+  const c=compute();
+  const lines=rfMovements(c).filter(l=>l.tab===tabKey);
+  if(!lines.length) return '';
+  const net=lines.reduce((s,l)=>s+l.sign*l.amount,0);
+  const rows=lines.map(l=>`<div class="rftie-row"><span class="rftie-lab"><span class="sgn ${l.sign>0?'pos':'neg'}">${l.sign>0?'+':'−'}</span>${esc(l.label)} <span class="gl-tag">${ACC[l.gl||'inventory'].code}</span></span><span class="rf-tied mono">${money(l.amount)}</span></div>`).join('');
+  return `<section class="block"><div class="card pad rftie">
+    <div class="rftie-head"><span class="rf-chip">roll-forward tie</span><b>Ties to the inventory roll-forward</b> <span class="rf-jump" onclick="go('recon')">↳ #${TAB_NUM.recon} Reconciliation</span></div>
+    ${rows}
+    <div class="rftie-row rftie-total"><span class="rftie-lab">Net inventory impact from this tab</span><span class="rf-tied mono">${money(net)}</span></div>
+    <p class="muted" style="font-size:12px;margin-top:8px">These teal figures post through the GL register and roll up into the inventory roll-forward — same color, so you can locate and reconcile each amount.</p>
+  </div></section>`;
+}
+
 /* ---- RECONCILIATION tab --------------------------------------------------- */
 function tabRecon(){
   const c=compute(); const ta=turnAnalytics();
@@ -766,20 +810,9 @@ function tabRecon(){
   ];
   const rf=[
     ['begin','',`Beginning inventory — ${esc(state.period.replace(/\\w+ /,'opening '))}`,c.OPEN.inventory,null],
-    ['add','+','Goods receipts (RNI)',c.B('receipt'),'receipt',{tieTab:'receiving'}],
-    ['add','+','Freight-in capitalized',c.B('freight'),'freight',{tieTab:'receiving'}],
-    ['add','+','Customer returns to stock',c.B('cust_return'),'cust_return',{tieTab:'reserve'}],
-    ['add','+','Cycle-count gains',c.B('count_gain'),'count_gain',{tieTab:'cycle'}],
-    ['sub','−','Cost of goods sold',c.B('cogs'),'cogs',{tieTab:'ship'}],
-    ['sub','−','Returns to vendor',c.B('vend_return'),'vend_return',{tieTab:'receiving'}],
-    ['sub','−','Shrinkage / loss',c.B('shrinkage'),'shrinkage',{tieTab:'cycle'}],
-    ['sub','−','LCM / NRV write-downs',c.B('writedown'),'writedown',{tieTab:'reserve'}],
-    ['sub','−','Purchase price variance',c.B('ppv'),'ppv',{tieTab:'cost'}],
-    ['add','+','Goods in transit — owned (vendor/customer)',c.itOwned,null,{tied:1,tab:'intransit',gl:'inventory'}],
-    ['add','+','Repaired units returned to stock',c.repairReuse,null,{tied:1,tab:'repair',gl:'inventory'}],
-    ['add','+','Warranty returns to stock',c.warrantyIn,null,{tied:1,tab:'warranty',gl:'inventory'}],
-    ['sub','−','Internal usage &amp; samples',c.internalUse,null,{tied:1,tab:'transfers',gl:'cogs'}],
-    ['sub','−','Warranty replacements shipped',c.warrantyOut,null,{tied:1,tab:'warranty',gl:'cogs'}],
+    ...rfMovements(c).map(l=> l.type
+      ? [l.sign>0?'add':'sub', l.sign>0?'+':'−', l.label, l.amount, l.type, {tieTab:l.tab}]
+      : [l.sign>0?'add':'sub', l.sign>0?'+':'−', l.label, l.amount, null, {tied:1,tab:l.tab,gl:l.gl}]),
     ['memo','=','Branch transfers — net $0',0,null,{memo:1,tab:'transfers',gross:c.branchGross}],
     ['end','=','Ending inventory per GL',c.glInv,null]
   ];
@@ -845,11 +878,11 @@ function rfRowHTML(r){
   const [cls,sign,label,amount,type,opts]=r;
   // Branch-transfer memo line (net $0, informational)
   if(opts&&opts.memo){
-    return `<div class="rfrow memo"><div class="lab"><span class="sgn">${sign}</span><span>${label}</span> <span class="rf-jump" title="#${TAB_NUM[opts.tab]} ${TAB_LABEL[opts.tab]}" onclick="go('${opts.tab}')">↳ #${TAB_NUM[opts.tab]}</span></div><div class="val">${money(amount)} <span class="muted" style="font-weight:500">(${money(opts.gross)} gross)</span></div></div>`;
+    return `<div class="rfrow memo"><div class="lab"><span class="sgn">${sign}</span><span>${esc(label)}</span> <span class="rf-jump" title="#${TAB_NUM[opts.tab]} ${TAB_LABEL[opts.tab]}" onclick="go('${opts.tab}')">↳ #${TAB_NUM[opts.tab]}</span></div><div class="val">${money(amount)} <span class="muted" style="font-weight:500">(${money(opts.gross)} gross)</span></div></div>`;
   }
   // Movement & service lines that tie to another tab (in transit, repair, warranty, internal use)
   if(opts&&opts.tied){
-    return `<div class="rfrow ${cls}"><div class="lab"><span class="sgn">${sign}</span><span>${label}</span> <span class="gl-tag">${ACC[opts.gl].code}</span> <span class="rf-jump" title="#${TAB_NUM[opts.tab]} ${TAB_LABEL[opts.tab]}" onclick="go('${opts.tab}')">↳ #${TAB_NUM[opts.tab]}</span></div><div class="val">${money(amount)}</div></div>`;
+    return `<div class="rfrow ${cls}"><div class="lab"><span class="sgn">${sign}</span><span>${esc(label)}</span> <span class="gl-tag">${ACC[opts.gl].code}</span> <span class="rf-jump" title="#${TAB_NUM[opts.tab]} ${TAB_LABEL[opts.tab]}" onclick="go('${opts.tab}')">↳ #${TAB_NUM[opts.tab]}</span></div><div class="val">${money(amount)}</div></div>`;
   }
   // Beginning / ending balances: simple rows tagged with the control account
   if(!type){
@@ -1087,6 +1120,7 @@ function tabReserve(){
   };
   const policyChips=RESERVE_POLICY.map(b=>`<span class="badge ${bandColor(b.pct)}">${esc(b.band)} → ${b.pct}%</span>`).join(' ');
   return `
+  ${rfTiePanel('reserve')}
   <section class="block">
     <div class="grid g6">
       ${tile('E&O inventory at cost',money(r.eoVal),'excess / obsolete on hand','📦','b-amber')}
@@ -1342,7 +1376,7 @@ function tabReceiving(){
       <td class="num mono">${money(p.value)}</td><td><span class="badge ${sb(p.stage)}">${esc(p.stage)}</span></td>
       <td class="mono">${esc(p.expected)}</td><td>${p.received?`<span class="badge ${late?'b-red':'b-green'}">${late?'Late':'On time'}</span>`:'<span class="badge b-gray">—</span>'}</td></tr>`;
   }).join('');
-  return `
+  return rfTiePanel('receiving') + `
   <section class="block"><div class="grid g6">
     ${tile('Open POs',money(m.openVal),'ordered, not shipped','📝','b-gray')}
     ${tile('Inbound in transit',money(m.inTransitVal),'en route to dock','🚛','b-blue')}
@@ -1540,6 +1574,7 @@ function tabCycle(){
       <td class="mono">${esc(l.due)}</td></tr>`).join('');
   const policy=Object.entries(ABC).map(([k,v])=>`<span class="badge ${k==='A'?'b-indigo':k==='B'?'b-blue':'b-gray'}">${esc(v.lbl)} · ${v.freq} · ±${(v.tol*100).toFixed(1)}%</span>`).join(' ');
   return `
+  ${rfTiePanel('cycle')}
   <section class="block">
     <div class="grid g6">
       ${tile('Count accuracy',m.accuracy.toFixed(0)+'%',m.accurate.length+'/'+m.counted.length+' within tolerance','🎯',m.accuracy>=95?'b-green':'b-amber')}
@@ -1604,6 +1639,7 @@ function tabShip(){
       <td>${esc(o.carrier)}</td><td><span class="badge ${st.badge}">${st.label}</span></td></tr>`;
   }).join('');
   return `
+  ${rfTiePanel('ship')}
   <section class="block">
     <div class="grid g6">
       ${tile('In-progress orders',num(m.inProg.length),money(m.inProgVal)+' open value','📦','b-indigo')}
@@ -1786,7 +1822,7 @@ function tabCost(){
       <p class="muted" style="font-size:12px;margin-top:10px">Same invoice lines, rolled up to the GL accounts they post to — the bridge from vendor invoices to the 1300 / 1310 / 5120 control accounts.</p>`;
   }
   const grandAll=state.invoices.reduce((s,iv)=>s+iv.lines.reduce((a,l)=>a+lineAmt(l),0),0);
-  return `
+  return rfTiePanel('cost') + `
   <section class="block">
     <div class="section-head" style="justify-content:space-between"><div><span class="eyebrow">Product costing</span><h2>Cost by invoice &amp; by GL</h2></div>${seg}</div>
     <div class="grid g3" style="margin-bottom:14px">
